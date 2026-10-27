@@ -326,7 +326,7 @@ static void actuator_task(void *arg)
             beep(150);
             vTaskDelay(pdMS_TO_TICKS(100));
             beep(150);
-            vTaskDelay(pdMS_TO_TICKS(300));
+            vTaskDelay(pdMS_TO_TICKS(1500));              /* red LED stays on long enough to see */
             gpio_set_level(PIN_LED_DENY, 0);
         }
     }
@@ -477,12 +477,19 @@ static void console_task(void *arg)
         if (n <= 0) continue;
         if (c == '\r' || c == '\n') {
             if (len > 0) {
+                uart_write_bytes(UART_NUM_0, "\r\n", 2);   /* move to a new line */
                 line[len] = '\0';
                 handle_command(line);
                 len = 0;
             }
+        } else if (c == 0x08 || c == 0x7F) {                /* backspace */
+            if (len > 0) {
+                len--;
+                uart_write_bytes(UART_NUM_0, "\b \b", 3);   /* erase it on screen */
+            }
         } else if (len < (int)sizeof(line) - 1) {
             line[len++] = (char)c;
+            uart_write_bytes(UART_NUM_0, &c, 1);            /* echo it back */
         }
     }
 }
