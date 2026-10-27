@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "author": "Dorcus Mukyala",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-servo", "id": "servo_entry", "top": -130, "left": 230, "attrs": {} },
+    { "type": "wokwi-servo", "id": "servo_exit", "top": 10, "left": 230, "attrs": {} },
+    { "type": "wokwi-led", "id": "led_grant", "top": 170, "left": 240, "attrs": { "color": "green" } },
+    { "type": "wokwi-led", "id": "led_deny", "top": 170, "left": 300, "attrs": { "color": "red" } },
+    { "type": "wokwi-resistor", "id": "r1", "top": 250, "left": 220, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "r2", "top": 290, "left": 220, "attrs": { "value": "220" } },
+    { "type": "wokwi-buzzer", "id": "bz1", "top": 100, "left": 360, "attrs": { "volume": "0.1" } }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+
+    [ "esp:18", "servo_entry:PWM", "orange", [] ],
+    [ "esp:5V", "servo_entry:V+", "red", [] ],
+    [ "esp:GND.1", "servo_entry:GND", "black", [] ],
+
+    [ "esp:19", "servo_exit:PWM", "orange", [] ],
+    [ "esp:5V", "servo_exit:V+", "red", [] ],
+    [ "esp:GND.1", "servo_exit:GND", "black", [] ],
+
+    [ "esp:25", "r1:1", "green", [] ],
+    [ "r1:2", "led_grant:A", "green", [] ],
+    [ "led_grant:C", "esp:GND.1", "black", [] ],
+
+    [ "esp:26", "r2:1", "red", [] ],
+    [ "r2:2", "led_deny:A", "red", [] ],
+    [ "led_deny:C", "esp:GND.1", "black", [] ],
+
+    [ "esp:27", "bz1:2", "purple", [] ],
+    [ "bz1:1", "esp:GND.1", "black", [] ]
+  ],
+  "dependencies": {}
+}
