@@ -1,3 +1,22 @@
+# ESP-IDF build output (generated)
 build/
+**/build/
+
+# Generated configuration
+sdkconfig
 sdkconfig.old
+**/sdkconfig
+**/sdkconfig.old
+
+# ESP-IDF managed components and caches
+managed_components/
+dependencies.lock
+.cache/
+
+# Editor files
 .vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
