@@ -1,0 +1,339 @@
+{
+  "version": 1,
+  "author": "CoCIS Smart Control group",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-pir-motion-sensor",
+      "id": "pir1",
+      "top": -150,
+      "left": 200,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": -150,
+      "left": 300,
+      "attrs": {
+        "color": "yellow",
+        "label": "Room1"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": -100,
+      "left": 300,
+      "attrs": {
+        "value": "330"
+      }
+    },
+    {
+      "type": "wokwi-pir-motion-sensor",
+      "id": "pir2",
+      "top": 0,
+      "left": 200,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led2",
+      "top": 0,
+      "left": 300,
+      "attrs": {
+        "color": "yellow",
+        "label": "Room2"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r2",
+      "top": 50,
+      "left": 300,
+      "attrs": {
+        "value": "330"
+      }
+    },
+    {
+      "type": "wokwi-microsd-card",
+      "id": "sd1",
+      "top": 150,
+      "left": 200,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servo_entry",
+      "top": -130,
+      "left": 530,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servo_exit",
+      "top": 10,
+      "left": 530,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_grant",
+      "top": 170,
+      "left": 540,
+      "attrs": {
+        "color": "green"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_deny",
+      "top": 170,
+      "left": 600,
+      "attrs": {
+        "color": "red"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_grant",
+      "top": 250,
+      "left": 520,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_deny",
+      "top": 290,
+      "left": 520,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "bz_door",
+      "top": 100,
+      "left": 660,
+      "attrs": {
+        "volume": "0.1"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "esp:TX",
+      "$serialMonitor:RX",
+      "",
+      []
+    ],
+    [
+      "esp:RX",
+      "$serialMonitor:TX",
+      "",
+      []
+    ],
+    [
+      "pir1:VCC",
+      "esp:5V",
+      "red",
+      []
+    ],
+    [
+      "pir1:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "pir1:OUT",
+      "esp:32",
+      "green",
+      []
+    ],
+    [
+      "esp:21",
+      "r1:1",
+      "yellow",
+      []
+    ],
+    [
+      "r1:2",
+      "led1:A",
+      "yellow",
+      []
+    ],
+    [
+      "led1:C",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "pir2:VCC",
+      "esp:5V",
+      "red",
+      []
+    ],
+    [
+      "pir2:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "pir2:OUT",
+      "esp:33",
+      "green",
+      []
+    ],
+    [
+      "esp:22",
+      "r2:1",
+      "yellow",
+      []
+    ],
+    [
+      "r2:2",
+      "led2:A",
+      "yellow",
+      []
+    ],
+    [
+      "led2:C",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "sd1:VCC",
+      "esp:3V3",
+      "red",
+      []
+    ],
+    [
+      "sd1:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "sd1:SCK",
+      "esp:14",
+      "green",
+      []
+    ],
+    [
+      "sd1:DI",
+      "esp:13",
+      "blue",
+      []
+    ],
+    [
+      "sd1:DO",
+      "esp:34",
+      "purple",
+      []
+    ],
+    [
+      "sd1:CS",
+      "esp:4",
+      "orange",
+      []
+    ],
+    [
+      "esp:18",
+      "servo_entry:PWM",
+      "orange",
+      []
+    ],
+    [
+      "esp:5V",
+      "servo_entry:V+",
+      "red",
+      []
+    ],
+    [
+      "esp:GND.1",
+      "servo_entry:GND",
+      "black",
+      []
+    ],
+    [
+      "esp:19",
+      "servo_exit:PWM",
+      "orange",
+      []
+    ],
+    [
+      "esp:5V",
+      "servo_exit:V+",
+      "red",
+      []
+    ],
+    [
+      "esp:GND.1",
+      "servo_exit:GND",
+      "black",
+      []
+    ],
+    [
+      "esp:25",
+      "r_grant:1",
+      "green",
+      []
+    ],
+    [
+      "r_grant:2",
+      "led_grant:A",
+      "green",
+      []
+    ],
+    [
+      "led_grant:C",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "esp:26",
+      "r_deny:1",
+      "red",
+      []
+    ],
+    [
+      "r_deny:2",
+      "led_deny:A",
+      "red",
+      []
+    ],
+    [
+      "led_deny:C",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "esp:27",
+      "bz_door:2",
+      "purple",
+      []
+    ],
+    [
+      "bz_door:1",
+      "esp:GND.1",
+      "black",
+      []
+    ]
+  ],
+  "dependencies": {}
+}
