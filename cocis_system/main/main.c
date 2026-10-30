@@ -26,11 +26,7 @@ static void cmd_roomlog(const char *args)
 void app_main(void)
 {
     room_control_set_publish_cb(on_room_status);
+    ESP_ERROR_CHECK(room_control_start(1));
     ESP_ERROR_CHECK(room_control_start(2));
-
-    ESP_ERROR_CHECK(entrance_register_command(
-        "roomlog", "roomlog on|off   show or hide the room status lines", cmd_roomlog));
-    ESP_ERROR_CHECK(entrance_start());
-
-    printf("\n=== CoCIS: room 2 running ===\n");
+    printf("\n=== CoCIS: rooms 1 and 2 running ===\n");
 }
