@@ -1,7 +1,7 @@
 #pragma once
 /* Lecture-room settings. ONE ESP32 runs the entrance AND both rooms, so each
  * room needs its own pins. Pins already used by the entrance code: 18, 19
- * (servos), 25, 26, 27 (LEDs/buzzer). The SD card (storage) will use
+ * (servos), 25, 26, 27 (LEDs/buzzer). The SD card (storage) uses
  * 13, 14, 34 and 4. Change a value here only after telling the group. */
 #define ROOM_COUNT              2
 
