@@ -10,8 +10,9 @@
 typedef struct {
     uint8_t           room;
     gpio_num_t        pir, led;
-    SemaphoreHandle_t lock;       /* guards st */
+    SemaphoreHandle_t lock;       /* guards st and fault */
     room_status_t     st;
+    bool              fault;      /* test: reports are not sent */
     bool              started;
 } room_ctx_t;
 
@@ -27,10 +28,22 @@ static void publish(room_ctx_t *c)
 {
     room_status_t snap;
     xSemaphoreTake(c->lock, portMAX_DELAY);
-    c->st.seq++;
-    snap = c->st;
+    bool fault = c->fault;
+    if (!fault) {
+        c->st.seq++;
+        snap = c->st;
+    }
     xSemaphoreGive(c->lock);
-    if (s_cb) s_cb(&snap);
+    if (!fault && s_cb) s_cb(&snap);
+}
+
+void room_control_simulate_fault(uint8_t room, bool fault)
+{
+    if (room < 1 || room > ROOM_COUNT || !s_ctx[room - 1].started) return;
+    room_ctx_t *c = &s_ctx[room - 1];
+    xSemaphoreTake(c->lock, portMAX_DELAY);
+    c->fault = fault;
+    xSemaphoreGive(c->lock);
 }
 
 static void room_task(void *arg)
@@ -98,18 +111,26 @@ esp_err_t room_control_start(uint8_t room)
         .mode = GPIO_MODE_INPUT,
         .pull_down_en = GPIO_PULLDOWN_ENABLE,
     };
-    gpio_config(&in);
     gpio_config_t out = {
         .pin_bit_mask = 1ULL << c->led,
         .mode = GPIO_MODE_OUTPUT,
     };
-    gpio_config(&out);
-    gpio_set_level(c->led, 0);
+    esp_err_t e = gpio_config(&in);
+    if (e == ESP_OK) e = gpio_config(&out);
+    if (e == ESP_OK) e = gpio_set_level(c->led, 0);
+    if (e != ESP_OK) {
+        vSemaphoreDelete(c->lock);
+        return e;
+    }
 
-    c->started = true;
     char name[12];
     snprintf(name, sizeof(name), "room%u", (unsigned)room);
-    return xTaskCreate(room_task, name, 3072, c, 5, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
+    if (xTaskCreate(room_task, name, 4096, c, 5, NULL) != pdPASS) {
+        vSemaphoreDelete(c->lock);
+        return ESP_ERR_NO_MEM;
+    }
+    c->started = true;
+    return ESP_OK;
 }
 
 bool room_control_get(uint8_t room, room_status_t *out)
