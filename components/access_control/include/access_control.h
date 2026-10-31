@@ -9,7 +9,9 @@
  * serial console (UART0), so no other component should read from the serial
  * port. Other components add their own commands with entrance_register_command().
  *
- * RFID is simulated: type "in <UID>" or "out <UID>" in the serial monitor.
+ * RFID is simulated (Wokwi has no RFID reader part): type "in <UID>" or
+ * "out <UID>" in the serial monitor; the console turns it into a scan on scan_queue.
+ * Opening hours and the clock come from the schedule component.
  */
 #include <stdbool.h>
 #include "esp_err.h"
@@ -37,10 +39,22 @@ void entrance_set_event_cb(entrance_event_cb_t cb);
 
 /* ---- Hook 2: add serial commands (login, rooms, ...) ---- */
 /* 'args' is the rest of the typed line after the command word ("" if none).
- * The command word must be lower case. Up to 8 commands. Call before entrance_start(). */
+ * The command word must be lower case and unique: a name already used by a
+ * built-in or registered command returns ESP_ERR_INVALID_STATE.
+ * 'help' is the whole line shown by "help", e.g. "logout              end the admin session".
+ * Up to 16 commands. Call before entrance_start(). */
 typedef void (*entrance_cmd_fn_t)(const char *args);
 esp_err_t entrance_register_command(const char *name, const char *help,
                                     entrance_cmd_fn_t fn);
 
 /* Number of people inside the building right now (thread safe). */
 int entrance_inside_count(void);
+
+/* Emergency mode: exit is allowed outside opening hours (thread safe).
+ * Shown by the "status" command. The login check is done by the caller
+ * (management component). */
+void entrance_set_emergency(bool on);
+
+/* Blocks or unblocks a registered card; saved in NVS. ESP_ERR_NOT_FOUND if the
+ * UID is not registered. The login check is done by the caller. */
+esp_err_t entrance_set_blocked(const char *uid, bool blocked);
