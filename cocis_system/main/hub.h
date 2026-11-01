@@ -3,7 +3,9 @@
  * Room 1, room 2 and the entrance send their reports into ONE FreeRTOS queue.
  * hub_task is the only reader: it keeps the latest status of each room,
  * marks a room OFFLINE after HUB_OFFLINE_MS without a report, and logs
- * every change (schedule_log -> SD card). */
+ * every change (schedule_log -> SD card). Building occupancy is not stored
+ * here: access_control is the single owner (entrance_inside_count()).
+ * Room reports carry a per-room sequence number so a duplicate can be ignored. */
 #include <stdbool.h>
 #include <stdint.h>
 #include "esp_err.h"
