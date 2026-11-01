@@ -16,6 +16,7 @@ dependencies.lock
 # Editor files
 .vscode/
 .idea/
+.clangd
 
 # OS files
 .DS_Store
