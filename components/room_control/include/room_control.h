@@ -27,3 +27,7 @@ typedef void (*room_publish_cb_t)(const room_status_t *status);
 void      room_control_set_publish_cb(room_publish_cb_t cb);
 esp_err_t room_control_start(uint8_t room);                    /* 1..ROOM_COUNT */
 bool      room_control_get(uint8_t room, room_status_t *out);  /* latest status */
+
+/* Test aid for offline detection: while 'fault' is true the room still
+ * switches its light but sends no reports, as if its link to the hub broke. */
+void      room_control_simulate_fault(uint8_t room, bool fault);
