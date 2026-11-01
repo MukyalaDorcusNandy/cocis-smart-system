@@ -5,7 +5,12 @@
 #include "freertos/semphr.h"
 #include "esp_timer.h"
 #include "esp_random.h"
+#if defined(MBEDTLS_MAJOR_VERSION) && MBEDTLS_MAJOR_VERSION >= 4
+#define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#include "mbedtls/private/sha256.h"
+#else
 #include "mbedtls/sha256.h"
+#endif
 #include "storage.h"
 #include "schedule.h"
 #include "auth.h"
