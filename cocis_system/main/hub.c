@@ -27,9 +27,10 @@ typedef struct {
 } hub_msg_t;
 
 static QueueHandle_t     s_queue;
-static SemaphoreHandle_t s_lock;                 /* guards s_rooms and s_inside */
+static SemaphoreHandle_t s_lock;                 /* guards s_rooms */
 static hub_room_t        s_rooms[ROOM_COUNT];
-static int               s_inside;               /* from the latest entrance report */
+/* Building occupancy is owned by access_control. The hub only prints the
+ * count that arrives with each entrance event; rooms uses entrance_inside_count(). */
 
 static uint32_t now_ms(void)
 {
@@ -41,13 +42,21 @@ static uint32_t now_ms(void)
 static void on_room_status(const room_status_t *s)
 {
     hub_msg_t m = { .type = HUB_MSG_ROOM, .room = *s };
-    xQueueSend(s_queue, &m, 0);     /* never block a room; the 5 s heartbeat re-sends */
+    /* never block a room; the 5 s heartbeat re-sends a missed report */
+    if (xQueueSend(s_queue, &m, 0) != pdTRUE) {
+        printf("[HUB] queue full, room %u report dropped (seq %lu)\n",
+               s->room, (unsigned long)s->seq);
+    }
 }
 
 static void on_entrance_event(const entrance_event_t *ev)
 {
     hub_msg_t m = { .type = HUB_MSG_ENTRANCE, .entrance = *ev };
-    xQueueSend(s_queue, &m, 0);     /* the entrance logs its own decision */
+    /* never block the entrance; occupancy stays with access_control */
+    if (xQueueSend(s_queue, &m, 0) != pdTRUE) {
+        printf("[HUB] queue full, entrance event dropped (%s %s)\n",
+               ev->is_entry ? "ENTRY" : "EXIT", ev->uid);
+    }
 }
 
 /* ---- hub task ---- */
@@ -58,6 +67,13 @@ static void handle_room(const room_status_t *s)
     hub_room_t *r = &s_rooms[s->room - 1];
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
+    /* Same seq as the last report is a duplicate (heartbeat or retry). */
+    if (r->ever_seen && s->seq != 0 && s->seq == r->status.seq) {
+        r->last_seen_ms = now_ms();
+        r->online       = true;
+        xSemaphoreGive(s_lock);
+        return;
+    }
     bool came_online = !r->online;
     bool changed = !r->ever_seen ||
                    r->status.occupied != s->occupied ||
@@ -83,9 +99,7 @@ static void handle_room(const room_status_t *s)
 
 static void handle_entrance(const entrance_event_t *ev)
 {
-    xSemaphoreTake(s_lock, portMAX_DELAY);
-    s_inside = ev->inside_count;
-    xSemaphoreGive(s_lock);
+    /* Occupancy is owned by the entrance. The hub only announces it. */
     if (ev->granted) {
         printf("[HUB] building occupancy: %d\n", ev->inside_count);
     }
@@ -110,6 +124,7 @@ static void check_offline(void)
 
 static void hub_task(void *arg)
 {
+    (void)arg;
     hub_msg_t m;
     for (;;) {
         /* wait at most 1 s so the offline check runs even when nothing arrives */
@@ -137,6 +152,7 @@ bool hub_get_room(uint8_t room, hub_room_t *out)
 
 static void cmd_rooms(const char *args)
 {
+    (void)args;
     uint32_t now = now_ms();
     for (uint8_t i = 1; i <= ROOM_COUNT; i++) {
         hub_room_t r;
@@ -152,10 +168,7 @@ static void cmd_rooms(const char *args)
                (unsigned long)r.status.light_on_s,
                (unsigned long)((now - r.last_seen_ms) / 1000));
     }
-    xSemaphoreTake(s_lock, portMAX_DELAY);
-    int inside = s_inside;
-    xSemaphoreGive(s_lock);
-    printf("Building: %d people inside\n", inside);
+    printf("Building: %d people inside\n", entrance_inside_count());
 }
 
 static void cmd_roomfail(const char *args)

@@ -39,7 +39,8 @@ cocis-smart-system/
 │       └── hub.h                hub_start(), hub_get_room(), hub_room_t
 │
 └── docs/
-    └── TEST_PLAN.md             Tests with steps and expected serial output
+    ├── TEST_PLAN.md             Tests with steps and expected serial output
+    └── REPORT.md                Group report (architecture, contributions, tests)
 ```
 
 Generated `build/`, `sdkconfig` and `sdkconfig.old` files are not committed.
@@ -92,14 +93,15 @@ room2 task --status (change / 5 s)-------------------+
 |---|---|
 | Entrance state (users, inside count, emergency, access log) | `state_mutex` in access_control |
 | Each room's status | one mutex per room |
-| Hub's room table and building occupancy | hub mutex |
+| Hub's room table (online/offline, last room report) | hub mutex |
+| Building occupancy and who-is-inside list | `state_mutex` in access_control (single owner; hub reads via `entrance_inside_count()`) |
 | Opening hours and clock | schedule mutex |
 | Log ring and SD log file | storage mutex (lines from different tasks are never mixed) |
 | Login session, lockout, PIN record | auth mutex |
 | Scans, door commands, reports to the hub | FreeRTOS queues (`scan_queue`, `actuator_queue`, hub queue) |
 | Serial port input | read only by `console_task` |
 
-Room and entrance callbacks only call `xQueueSend(..., 0)`, so a busy hub never blocks a room or the entrance.
+Room and entrance callbacks only call `xQueueSend(..., 0)`, so a busy hub never blocks a room or the entrance. A full queue prints a drop message; the room heartbeat retries within 5 s. Room reports include a per-room sequence number so the hub can ignore a duplicate.
 
 ## Pin plan (must not clash)
 

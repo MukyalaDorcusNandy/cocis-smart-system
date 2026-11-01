@@ -2,7 +2,7 @@
 
 Group coursework (BSE III, Embedded Systems): a smart control and monitoring system for the College of Computing and Information Sciences, simulated in Wokwi with ESP-IDF.
 
-**This file explains how to build, run and use the system.** How the code is organised (folders, components, tasks, synchronisation, pin plan) is in [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md). The tests are in [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
+**This file explains how to build, run and use the system.** How the code is organised (folders, components, tasks, synchronisation, pin plan) is in [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md). The tests are in [docs/TEST_PLAN.md](docs/TEST_PLAN.md). The group report is in [docs/REPORT.md](docs/REPORT.md).
 
 Following the lecturer's ruling (free Wokwi supports one microcontroller), the whole system runs on **one ESP32**: the building entrance and lecture rooms 1 and 2 all run in the same firmware.
 
