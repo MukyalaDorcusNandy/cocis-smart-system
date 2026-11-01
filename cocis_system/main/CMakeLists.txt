@@ -1,3 +1,3 @@
-idf_component_register(SRCS "main.c"
+idf_component_register(SRCS "main.c" "hub.c"
                        INCLUDE_DIRS "."
-                       REQUIRES room_control access_control driver esp_driver_uart)
+                       REQUIRES room_control access_control storage schedule auth management esp_timer)
