@@ -11,13 +11,17 @@ cocis-smart-system/
 ├── components/
 │   ├── access_control/          Entrance: card decisions, roles/colours, doors, console
 │   │   ├── CMakeLists.txt
-│   │   ├── access_control.c     Card check, doors, LEDs, RGB LED, buzzer, inside list, console task
+│   │   ├── access_control.c     Card check, doors, LEDs, buzzer, inside list, console task
 │   │   └── include/
 │   │       └── access_control.h
 │   │
 │   ├── rfid/                    Two MFRC522 readers (ENTRY, EXIT) on SPI3
 │   │   ├── rfid.c               MFRC522 driver (WUPA, anticollision, BCC) + rfid task
 │   │   └── include/rfid.h       rfid_start()
+│   │
+│   ├── lcd_display/             16x2 I2C LCD at the entrance (address 0x27)
+│   │   ├── lcd_display.c        PCF8574 + 4-bit LCD driver, lcd task and queue
+│   │   └── include/lcd_display.h lcd_display_start()
 │   │
 │   ├── web_dashboard/           Wi-Fi + web Security Dashboard
 │   │   ├── wifi.c               Joins "Wokwi-GUEST", retries forever
@@ -41,14 +45,8 @@ cocis-smart-system/
 ├── cocis_system/                The firmware project: integration and synchronisation
 │   ├── CMakeLists.txt           Adds ../components
 │   ├── sdkconfig.defaults       Large app partition, 4 MB flash, event task stack, HTTP header size
-│   ├── wokwi.toml               Firmware path, the mfrc522 custom chip, port forward 8180 -> 80
-│   ├── diagram.json             One ESP32: entrance parts, 2 readers, RGB LED, PIR + LED per room, SD card
-│   ├── chips/                   Wokwi custom chip: our MFRC522 reader
-│   │   ├── mfrc522.chip.c       Chip source: MFRC522 SPI registers + the "Card" slider
-│   │   ├── mfrc522.chip.json    Pins (VCC GND SCK MOSI MISO SDA RST IRQ) and the slider
-│   │   ├── mfrc522.chip.wasm    Built chip (committed)
-│   │   ├── wokwi-api.h          Wokwi chip API header
-│   │   └── build.sh             Rebuilds the .wasm with wasi-sdk
+│   ├── wokwi.toml               Firmware path, port forward 8180 -> 80
+│   ├── diagram.json             One ESP32: 2 MFRC522 readers, LCD, doors, LEDs, buzzer, PIR + LED per room, SD card
 │   └── main/
 │       ├── CMakeLists.txt
 │       ├── main.c               app_main: starts everything in order; room adapter for the web
@@ -67,8 +65,9 @@ Generated `build/`, `sdkconfig` and `sdkconfig.old` files are not committed.
 
 | Component | Purpose | Main functions |
 |---|---|---|
-| `access_control` | Entrance: ENTRY and EXIT scan points, grant/deny, door servos, LEDs, RGB card-colour LED, buzzer, who is inside (role, since-time). Owns the serial console; other components add commands to it. | `entrance_start()`, `entrance_submit_scan()`, `entrance_register_command()`, `entrance_set_event_cb()` (up to 4 listeners), `entrance_get_users()`, `entrance_inside_count()`, `entrance_set_emergency()`, `entrance_get_emergency()`, `entrance_set_blocked()`, `entrance_role_name()`, `entrance_role_color()` |
-| `rfid` | Two MFRC522 readers on one SPI bus. The `rfid` task polls both every 150 ms and sends each new card to the entrance | `rfid_start()` |
+| `access_control` | Entrance: ENTRY and EXIT scan points, grant/deny, door servos, LEDs, buzzer, who is inside (role, since-time). Owns the serial console; other components add commands to it. | `entrance_start()`, `entrance_submit_scan()`, `entrance_register_command()`, `entrance_set_event_cb()` (up to 4 listeners), `entrance_get_users()`, `entrance_inside_count()`, `entrance_set_emergency()`, `entrance_get_emergency()`, `entrance_set_blocked()`, `entrance_role_name()`, `entrance_role_color()` |
+| `rfid` | Two MFRC522 readers (Wokwi `board-mfrc522`) on one SPI bus. The `rfid` task polls both every 150 ms and sends each new card to the entrance | `rfid_start()` |
+| `lcd_display` | 16x2 I2C LCD at the entrance. An entrance event listener copies each decision into a queue; the `lcd` task shows it for 3 s, otherwise the clock, people inside and OPEN/CLOSED. Runs without the LCD if none answers | `lcd_display_start()` |
 | `web_dashboard` | Wi-Fi station, HTTP server on port 80, PIN sign-in with a token, JSON API, alert ring, `wifi` command | `web_dashboard_set_room_provider()`, `web_dashboard_register_commands()`, `web_dashboard_start()`, `wifi_net_start()` |
 | `room_control` | One task per room: polls the PIR every 100 ms, light follows occupancy with a 10 s vacancy delay, counts light-on seconds, reports on change and every 5 s | `room_control_start(1/2)`, `room_control_set_publish_cb()`, `room_control_get()`, `room_control_simulate_fault()` (test aid) |
 | `storage` | Log lines to `/sdcard/ACCESS.LOG` (SPI2) plus a RAM ring of 20 lines (RAM only if the card fails); small settings in NVS | `storage_init()`, `storage_log()`, `storage_log_print()`, `storage_log_dump_sd()`, `storage_sd_mounted()`, `storage_kv_set/get()` |
@@ -81,12 +80,13 @@ Generated `build/`, `sdkconfig` and `sdkconfig.old` files are not committed.
 
 ```text
 rfid task -----entrance_submit_scan()--+
-console_task --entrance_submit_scan()--+--scan_queue--> access_task --actuator_queue--> actuator_task --> servos, LEDs, RGB, buzzer
+console_task --entrance_submit_scan()--+--scan_queue--> access_task --actuator_queue--> actuator_task --> servos, LEDs, buzzer
 web /api/scan -entrance_submit_scan()--+                     |
                                                              +-- entrance event (each listener) --+--> hub queue --> hub_task
 room1 task --status (change / 5 s)----------------------------------------------------------------+
 room2 task --status (change / 5 s)----------------------------------------------------------------+
                                                              +-- entrance event --> web alert ring --> browser (polls /api/state every 1.5 s)
+                                                             +-- entrance event --> lcd_queue --> lcd_task --> 16x2 LCD (I2C)
 ```
 
 | Task | Component | Priority | Stack (bytes) |
@@ -97,6 +97,7 @@ room2 task --status (change / 5 s)----------------------------------------------
 | `actuator` | access_control | 4 | 4096 |
 | `rfid` | rfid | 4 | 4096 |
 | `console` | access_control | 3 | 6144 |
+| `lcd` | lcd_display | 3 | 3072 |
 | `httpd` (HTTP server) | web_dashboard (ESP-IDF `httpd_start`) | ESP-IDF default (5) | 6144 |
 | Wi-Fi driver and event tasks | ESP-IDF | ESP-IDF default | event task 6144 (`sdkconfig.defaults`) |
 
@@ -112,10 +113,11 @@ room2 task --status (change / 5 s)----------------------------------------------
 2. `hub_start()`: queue, hub task, room and entrance callbacks, `rooms`/`roomfail` commands
 3. `management_register_commands()`
 4. `web_dashboard_set_room_provider(web_room)` and `web_dashboard_register_commands()`: alert listener and `wifi` command
-5. `room_control_start(1)`, `room_control_start(2)`
-6. `entrance_start()`: it starts the console, so all commands and listeners must be registered before it
-7. `rfid_start()`: the readers send scans to the entrance, so they start after it
-8. `web_dashboard_start()`: Wi-Fi and the web server. It does not wait for Wi-Fi.
+5. `lcd_display_start()`: I2C bus, LCD check and the entrance listener for the LCD
+6. `room_control_start(1)`, `room_control_start(2)`
+7. `entrance_start()`: it starts the console, so all commands and listeners must be registered before it
+8. `rfid_start()`: the readers send scans to the entrance, so they start after it
+9. `web_dashboard_start()`: Wi-Fi and the web server. It does not wait for Wi-Fi.
 
 ## Synchronisation (coursework §2.7)
 
@@ -129,11 +131,12 @@ room2 task --status (change / 5 s)----------------------------------------------
 | Log ring and SD log file | storage mutex (lines from different tasks are never mixed) |
 | Login session, lockout counter, PIN record | auth mutex; **one lockout counter shared by console (`auth_login`) and web (`auth_check_pin`)** |
 | SPI3 bus shared by the two readers | ESP-IDF SPI master driver: one device handle per reader, one transaction at a time, own CS pin each |
+| LCD screen | written only by the `lcd` task; decisions reach it through `lcd_queue` |
 | Web alert ring and web session token | `s_lock` mutex in web_dashboard (entrance task writes alerts, HTTP task reads them) |
-| Scans, door commands, reports to the hub | FreeRTOS queues (`scan_queue`, `actuator_queue`, hub queue) |
+| Scans, door commands, reports to the hub, LCD messages | FreeRTOS queues (`scan_queue`, `actuator_queue`, hub queue, `lcd_queue`) |
 | Serial port input | read only by `console_task` |
 
-Room and entrance callbacks only call `xQueueSend(..., 0)` or copy into the alert ring, so a busy hub or web server never blocks a room or the entrance. A full queue prints a drop message; the room heartbeat retries within 5 s. Room reports include a per-room sequence number so the hub can ignore a duplicate.
+Room and entrance callbacks only call `xQueueSend(..., 0)` or copy into the alert ring, so a busy hub, web server or LCD never blocks a room or the entrance. A full queue prints a drop message; the room heartbeat retries within 5 s. Room reports include a per-room sequence number so the hub can ignore a duplicate.
 
 ## Pin plan (must not clash)
 
@@ -144,8 +147,11 @@ Room and entrance callbacks only call `xQueueSend(..., 0)` or copy into the aler
 | SD card SCK / MOSI / MISO / CS (SPI2) | 14 / 13 / 34 / 4 | `storage.c` |
 | RFID readers SCK / MOSI / MISO (SPI3, shared) | 16 / 17 / 35 | `rfid.c` |
 | RFID chip select: ENTRY / EXIT (SDA pin) | 5 / 23 | `rfid.c` |
+| RFID RST (both readers) | wired to 3.3 V (always running) | `diagram.json` |
 | Entrance servos (entry / exit), LEDC 50 Hz | 18 / 19 | `access_control.c` |
 | Entrance LEDs (grant / deny) and buzzer (LEDC 2 kHz) | 25 / 26 / 27 | `access_control.c` |
-| RGB card-colour LED R / G / B (common to GND) | 15 / 2 / 12 | `access_control.c` |
+| Entrance LCD SDA / SCL (I2C, address 0x27) | 15 / 2 | `lcd_display.c` |
+
+**Circuit layout (`diagram.json`).** The parts are placed in zones so nothing overlaps: the rooms (PIRs + room LEDs) on the left, the ESP32 in the middle, the LCD on top, the two readers and the door servos on the right, the green/red LEDs and the buzzer at the bottom right, and the SD card at the bottom.
 
 Change a pin only after telling the group, and update `diagram.json` to match.

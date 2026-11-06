@@ -6,13 +6,72 @@ Group coursework (BSE III, Embedded Systems): a smart control and monitoring sys
 
 Following the lecturer's ruling (free Wokwi supports one microcontroller), the whole system runs on **one ESP32**: the building entrance and lecture rooms 1 and 2 all run in the same firmware.
 
+## Team instructions (recording your video)
+
+Follow these steps in order.
+
+**1. Get the code.** In a terminal, in the repository folder:
+
+```sh
+git fetch
+git checkout feature/rfid-dashboard
+git pull
+```
+
+**2. Build.** Open an ESP-IDF terminal (VS Code: F1 → **ESP-IDF: Open ESP-IDF Terminal**), then:
+
+```sh
+cd cocis_system
+rm -f sdkconfig      # first time only, so sdkconfig.defaults are used (Windows: del sdkconfig)
+idf.py build
+```
+
+It must finish with no errors.
+
+**3. Run.** In VS Code press F1 → **Wokwi: Start Simulator**. Turn the computer sound on (buzzer and dashboard beeps).
+
+**4. Tap a card.** Click a reader (ENTRY or EXIT) in the simulator, pick a card (Blue, Green, Yellow, Red, NFC Tag or Key Fob) and press **Tap**. The card stays on the reader for about 0.5 s. With the keyboard: click the reader's card panel, press `b` / `g` / `y` / `r` / `n` / `k` to pick a card, and `t` to tap. **Hold** keeps the card on the reader (it is still read only once).
+
+| Card in Wokwi | Person | Role / colour | Expected result (first tap on ENTRY) |
+|---|---|---|---|
+| Blue Card | Brian | Student / blue | GRANTED, LCD `WELCOME Brian` / `Student BLUE card` |
+| Green Card | Alice | Staff / green | GRANTED, LCD `WELCOME Alice` / `Staff GREEN card` |
+| Yellow Card | Grace | Guest / yellow | GRANTED, LCD `WELCOME Grace` / `Guest YELLOW card` |
+| Red Card | Dan | Admin / red | GRANTED, LCD `WELCOME Dan` / `Admin RED card` |
+| Key Fob (orange) | Lost Card | blocked | DENIED, LCD `Card blocked` |
+| NFC Tag (grey) | not registered | — | DENIED, LCD `Unknown card` |
+
+Tapping the same card on ENTRY again gives DENIED `Already inside`. Tap it on EXIT to leave (`BYE ...`). Granted: green LED, door servo, one short beep. Denied: red LED, two long beeps.
+
+**5. Dashboard.** While the simulator runs, open **http://localhost:8180** in your browser and sign in with PIN **1234**.
+
+**6. Backup: typed scans.** Click inside the Wokwi terminal and type `in <UID>` or `out <UID>`, for example `in 01020304` (Brian). `help` lists all commands.
+
+**7. Who presents what.** Your script is in [docs/VIDEO_GUIDE.md](docs/VIDEO_GUIDE.md) under your name.
+
+| Member | New part to present | Files to show |
+|---|---|---|
+| Mukyala Dorcus Nandy | The two MFRC522 RFID readers (driver), card roles and colours, buzzer pattern | `components/rfid/rfid.c`, `components/access_control/access_control.c` |
+| Mariam Wambui | Lecture rooms and the room cards on the dashboard | `components/room_control/room_control.c`, `cocis_system/main/main.c` (`web_room()`), `dashboard.html` |
+| Kisomose Arnold Patrick | Entrance LCD, the circuit layout and the pin plan | `components/lcd_display/lcd_display.c`, `cocis_system/diagram.json`, `wokwi.toml`, `sdkconfig.defaults` |
+| Katumba Joshua Mugwanya | Login and web sign-in security | `components/auth/auth.c`, `components/web_dashboard/web_dashboard.c` |
+| Nannyombi Shakiran (Kiran) | Wi-Fi, web dashboard and integration | `cocis_system/main/main.c`, `hub.c`, `components/web_dashboard/` |
+
+**8. Send your video link to Kiran by 23:30.** The report needs it.
+
+**Troubleshooting**
+
+- `[RFID] ... reader NOT FOUND`: use the typed `in <UID>` / `out <UID>` commands instead.
+- No text on the LCD, or `[LCD] no LCD at 0x27, running without it`: check that the LCD is in I2C mode (`"pins": "i2c"` in `diagram.json`).
+- Dashboard not loading: wait for the `[WIFI] connected, IP ...` line, then reload the page.
+
 ## Team
 
 | Member | Main work |
 |---|---|
-| Mukyala Dorcus Nandy | Entrance and access control; the two MFRC522 RFID readers (driver + Wokwi custom chip); card roles, colours and the RGB LED |
+| Mukyala Dorcus Nandy | Entrance and access control; the two MFRC522 RFID readers (driver); card roles and colours; buzzer pattern |
 | Mariam Wambui | Lecture-room occupancy and lighting; rooms panel on the web dashboard |
-| Kisomose Arnold Patrick | Room component, project structure and circuit: `diagram.json` wiring, pin plan, `wokwi.toml`, `sdkconfig.defaults` |
+| Kisomose Arnold Patrick | Room component, project structure and circuit: `diagram.json` wiring and layout, pin plan, `wokwi.toml`, `sdkconfig.defaults`; the entrance LCD (`lcd_display`) |
 | Katumba Joshua Mugwanya | SD card log and settings, opening hours and clock, PIN login, admin commands; web sign-in security (shared lockout, tokens) |
 | Nannyombi Shakiran (Kiran) | Integration (start-up, hub, offline detection); Wi-Fi and the web Security Dashboard |
 
@@ -20,10 +79,11 @@ Following the lecturer's ruling (free Wokwi supports one microcontroller), the w
 
 - **Entrance.** A card is tapped on the ENTRY or the EXIT reader and is granted or denied. It is denied if the card is unknown or blocked, if the person scans in twice or out without being inside (anti-passback), or if the building is closed.
   - **Outside opening hours both entry and exit are denied**, also for people still inside (coursework §2.6). Only emergency mode, switched on by an admin, allows exit outside hours.
-  - Granted: green LED, the **RGB LED shows the card colour**, and the entry or exit door servo opens for 3 s. Denied: red LED and two long buzzer beeps. Granted also gives one short beep.
+  - Granted: green LED, one short beep, and the entry or exit door servo opens for 3 s. Denied: red LED and two long buzzer beeps.
   - The system keeps a list of who is inside, with each person's role and the time they came in.
-- **Two RFID readers (MFRC522).** Wokwi has no official MFRC522 part, so the group built one as a **Wokwi custom chip** (`cocis_system/chips/`). It speaks the real MFRC522 SPI register protocol, and the firmware talks to it with a real MFRC522 driver. Typing `in <UID>` / `out <UID>` still works as a backup.
-- **Card roles and colours.** Student = blue, Staff = green, Guest = yellow, Admin = purple.
+- **Two RFID readers (MFRC522).** Two official Wokwi `board-mfrc522` parts ([docs](https://docs.wokwi.com/parts/board-mfrc522)) on one SPI bus. The firmware talks to them with its own register-level MFRC522 driver (no library). Typing `in <UID>` / `out <UID>` still works as a backup.
+- **Card roles and colours.** Student = blue, Staff = green, Guest = yellow, Admin = red. The colour is the colour of the Wokwi card itself, and it is shown on the LCD, the console and the dashboard.
+- **Entrance LCD.** A 16x2 I2C LCD at the door. When idle it shows the clock, how many people are inside and OPEN/CLOSED. After a scan it shows the result for 3 s, for example `WELCOME Brian` / `Student BLUE card` or `DENIED` / `Building closed`.
 - **Lecture rooms.** A PIR sensor in each room switches the room light on when it detects motion, and off 10 s after the last motion. Each room reports its status, and a room that stops reporting for 15 s is shown as **OFFLINE**.
 - **Opening hours and clock.** Default **08:00–18:00**, saved in flash. The simulated clock starts at 08:00 at every boot (Wokwi has no real-time clock).
 - **Admin login.** Changing a setting needs `login <pin>`. On first boot the PIN is **1234** and the system asks you to change it. 3 wrong PINs lock login for 30 s, and a session ends after 120 s without a protected command.
@@ -41,19 +101,19 @@ Then, from the repository folder:
 
 ```sh
 cd cocis_system
-rm sdkconfig                # once, so the new sdkconfig.defaults are used (Windows: del sdkconfig)
+rm -f sdkconfig             # once, so the new sdkconfig.defaults are used (Windows: del sdkconfig)
 idf.py set-target esp32     # first time only
 idf.py build
 ```
 
-`sdkconfig.defaults` sets a larger app partition (Wi-Fi + web server do not fit in 1 MB) and 4 MB flash. The RFID custom chip (`chips/mfrc522.chip.wasm`) is already built and committed. Only after changing `mfrc522.chip.c` run `chips/build.sh` (needs wasi-sdk).
+`sdkconfig.defaults` sets a larger app partition (Wi-Fi + web server do not fit in 1 MB) and 4 MB flash.
 
 ## Run in Wokwi
 
 1. Open the `cocis_system` folder in VS Code.
 2. Press F1 and choose **Wokwi: Start Simulator**.
 3. Click inside the Wokwi terminal and type `help`.
-4. **Tap a card:** click the ENTRY (or EXIT) reader chip in the diagram and move the **Card** slider: `0` none, `1` Alice (staff), `2` Brian (student), `3` Carol (student), `4` Dan (admin), `5` Grace (guest), `6` lost card (blocked), `7` unknown. Set it back to `0` to take the card away (the same card is reported again only after it was removed).
+4. **Tap a card:** click the ENTRY (or EXIT) reader, pick a card (Blue, Green, Yellow, Red, NFC Tag, Key Fob) and press **Tap**. Keyboard: click the card panel, `b` / `g` / `y` / `r` / `n` / `k` picks a card, `t` taps. See [Test cards](#test-cards).
 5. **Rooms:** click a PIR sensor to simulate motion in a room.
 6. **Dashboard:** wait for `[WIFI] connected, IP ...`, then open **http://localhost:8180** in your browser and sign in with the PIN (default `1234`).
 
@@ -63,13 +123,15 @@ If the VS Code terminal does not accept typing on your machine, add `rfc2217Serv
 python -m serial.tools.miniterm rfc2217://localhost:4000
 ```
 
-Expected output when the ENTRY reader slider is set to 1:
+Expected output when the Blue Card is tapped on the ENTRY reader:
 
 ```text
-[RFID ENTRY] card A1B2C3D4
->> ENTRY A1B2C3D4 (Alice (Staff), green card) -> GRANTED [ok] | inside now: 1
+[RFID ENTRY] card 01020304
+>> ENTRY 01020304 (Brian (Student), blue card) -> GRANTED [ok] | inside now: 1
 [HUB] building occupancy: 1
 ```
+
+The LCD shows `WELCOME Brian` / `Student BLUE card` for 3 s.
 
 ## Console commands
 
@@ -99,17 +161,19 @@ Expected output when the ENTRY reader slider is set to 1:
 
 ## Test cards
 
-The card list is fixed in the firmware (`access_control.c`) and in the custom chip (`mfrc522.chip.c`).
+The card list is fixed in the firmware (`users[]` in `access_control.c`). The UIDs match the Wokwi MFRC522 card presets, and the card colour is the role colour.
 
-| Slider | UID | Name | Role | Colour |
+| Wokwi card | UID | Name | Role | Colour |
 |---|---|---|---|---|
-| 1 | `A1B2C3D4` | Alice | Staff | green |
-| 2 | `B2C3D4E5` | Brian | Student | blue |
-| 3 | `C3D4E5F6` | Carol | Student | blue |
-| 4 | `D4E5F6A7` | Dan | Admin | purple |
-| 5 | `E5F6A7B8` | Grace | Guest | yellow |
-| 6 | `DEADBEEF` | Lost card | (blocked) | — |
-| 7 | `12345678` | not registered | unknown | — |
+| Green Card | `11223344` | Alice | Staff | green |
+| Blue Card | `01020304` | Brian | Student | blue |
+| Yellow Card | `55667788` | Grace | Guest | yellow |
+| Red Card | `AABBCCDD` | Dan | Admin | red |
+| Key Fob (orange) | `C0FFEE99` | Lost Card | (blocked) | — |
+| NFC Tag (grey) | `88041122` | not registered | unknown | — |
+| (none, typed only) | `C3D4E5F6` | Carol | Student | blue |
+
+The NFC Tag has a 7-byte UID. The driver reads only the first 4 bytes it sends (`88041122`), and that ID is not registered, so it is denied as an unknown tag.
 
 ## Working on the repo
 
