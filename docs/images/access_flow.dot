@@ -1,0 +1,77 @@
+// Flowchart of one card scan, from the reader to the door (rfid.c + access_control.c).
+// Render: dot -Tpng -Gdpi=200 docs/images/access_flow.dot -o docs/images/00-access-flow.png
+digraph access_flow {
+    rankdir=TB;
+    bgcolor="white";
+    nodesep=0.35; ranksep=0.32;
+    fontname="Helvetica";
+    label=<<b>Card scan flowchart: from the RFID reader to the door</b><br/><font point-size="9">rfid task (rfid.c) and access task, process_scan() (access_control.c)</font>>;
+    labelloc=t; fontsize=14;
+    node [fontname="Helvetica", fontsize=11, style="filled", color="#475569", penwidth=1.2];
+    edge [fontname="Helvetica", fontsize=10, color="#475569", fontcolor="#334155"];
+
+    // shapes: rounded box = start/end, box = step, diamond = decision
+    start  [label="Card tapped on the\nENTRY or EXIT reader", shape=box, style="filled,rounded", fillcolor="#e0e7ff"];
+    req    [label="rfid task: REQA / WUPA\n\"is a card there?\"", shape=box, fillcolor="#dbeafe"];
+    ans    [label="Card answered\n(ATQA)?", shape=diamond, fillcolor="#fef9c3"];
+    uid    [label="Anticollision: read UID\n(FIFO read in one SPI transfer)", shape=box, fillcolor="#dbeafe"];
+    bcc    [label="BCC check\nOK?", shape=diamond, fillcolor="#fef9c3"];
+    newc   [label="New card?\n(not already reported)", shape=diamond, fillcolor="#fef9c3"];
+    submit [label="entrance_submit_scan()\n→ scan_queue → access task", shape=box, fillcolor="#dbeafe"];
+    wait   [label="Wait about 50 ms,\npoll again", shape=box, style="filled,rounded", fillcolor="#f1f5f9"];
+
+    reg    [label="Card\nregistered?", shape=diamond, fillcolor="#fef9c3"];
+    blk    [label="Card\nblocked?", shape=diamond, fillcolor="#fef9c3"];
+    dir    [label="ENTRY or\nEXIT?", shape=diamond, fillcolor="#fef9c3"];
+    inside1[label="Already\ninside?", shape=diamond, fillcolor="#fef9c3"];
+    inside2[label="Person\ninside?", shape=diamond, fillcolor="#fef9c3"];
+    open   [label="Building open\n(opening hours)?", shape=diamond, fillcolor="#fef9c3"];
+    emerg  [label="EXIT and\nemergency mode ON?", shape=diamond, fillcolor="#fef9c3"];
+
+    d_unk  [label="DENIED\nunknown tag", shape=box, style="filled,rounded", fillcolor="#fee2e2", color="#dc2626"];
+    d_blk  [label="DENIED\ntag blocked", shape=box, style="filled,rounded", fillcolor="#fee2e2", color="#dc2626"];
+    d_anti [label="DENIED\nalready inside\n(anti-passback)", shape=box, style="filled,rounded", fillcolor="#fee2e2", color="#dc2626"];
+    d_not  [label="DENIED\nnot inside", shape=box, style="filled,rounded", fillcolor="#fee2e2", color="#dc2626"];
+    d_hrs  [label="DENIED\noutside access hours", shape=box, style="filled,rounded", fillcolor="#fee2e2", color="#dc2626"];
+    g_ok   [label="GRANTED\nok", shape=box, style="filled,rounded", fillcolor="#dcfce7", color="#16a34a"];
+    g_em   [label="GRANTED\nemergency exit", shape=box, style="filled,rounded", fillcolor="#dcfce7", color="#16a34a"];
+
+    granted [label=<<b>Granted</b><br/>update who-is-inside list<br/>door servo opens 3 s<br/>green LED + 1 short beep<br/>LCD: WELCOME / BYE + card colour>,
+             shape=box, fillcolor="#bbf7d0", color="#16a34a"];
+    denied  [label=<<b>Denied</b><br/>red LED + 2 long beeps<br/>LCD: DENIED + reason<br/>dashboard: red SECURITY ALERT>,
+             shape=box, fillcolor="#fecaca", color="#dc2626"];
+    done    [label=<<b>Every decision</b><br/>written to the SD card log<br/>sent to the hub, LCD and dashboard>,
+             shape=box, style="filled,rounded", fillcolor="#e0e7ff"];
+
+    start -> req -> ans;
+    ans -> uid   [label=" yes"];
+    ans -> wait  [label=" no card"];
+    uid -> bcc;
+    bcc -> newc  [label=" yes"];
+    bcc -> wait  [label=" no (bad read)"];
+    newc -> submit [label=" yes"];
+    newc -> wait [label=" no (same card)"];
+    submit -> reg;
+
+    reg -> d_unk  [label=" no"];
+    reg -> blk    [label=" yes"];
+    blk -> d_blk  [label=" yes"];
+    blk -> dir    [label=" no"];
+    dir -> inside1 [label=" ENTRY"];
+    dir -> inside2 [label=" EXIT"];
+    inside1 -> d_anti [label=" yes"];
+    inside1 -> open   [label=" no"];
+    inside2 -> d_not  [label=" no"];
+    inside2 -> open   [label=" yes"];
+    open -> g_ok  [label=" yes"];
+    open -> emerg [label=" no"];
+    emerg -> g_em  [label=" yes"];
+    emerg -> d_hrs [label=" no"];
+
+    g_ok -> granted; g_em -> granted;
+    d_unk -> denied; d_blk -> denied; d_anti -> denied; d_not -> denied; d_hrs -> denied;
+    granted -> done; denied -> done;
+
+    { rank=same; d_unk; blk; }
+    { rank=same; d_blk; dir; }
+}
