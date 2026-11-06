@@ -127,6 +127,15 @@
       "attrs": {
         "volume": "0.1"
       }
+    },
+    {
+      "type": "wokwi-rgb-led",
+      "id": "rgb_card",
+      "top": 170,
+      "left": 660,
+      "attrs": {
+        "common": "cathode"
+      }
     }
   ],
   "connections": [
@@ -330,6 +339,30 @@
     ],
     [
       "bz_door:1",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "esp:15",
+      "rgb_card:R",
+      "red",
+      []
+    ],
+    [
+      "esp:2",
+      "rgb_card:G",
+      "green",
+      []
+    ],
+    [
+      "esp:12",
+      "rgb_card:B",
+      "blue",
+      []
+    ],
+    [
+      "rgb_card:COM",
       "esp:GND.1",
       "black",
       []
