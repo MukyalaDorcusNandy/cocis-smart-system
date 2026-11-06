@@ -83,14 +83,17 @@ typedef struct {
 typedef struct {
     scan_point_t door;
     bool granted;
+    entrance_role_t role;   /* card colour (role) of the person */
 } actuator_cmd_t;
 
 /* One registered person */
 typedef struct {
     char uid[UID_LEN];
     char name[NAME_LEN];
+    entrance_role_t role;   /* decides the card colour */
     bool blocked;   /* lost / stolen card */
     bool inside;    /* currently inside the building? */
+    char since[16]; /* time of the last granted scan */
 } user_t;
 
 /* ------------------------------------------------------------------ */
@@ -99,12 +102,16 @@ typedef struct {
 /* Registered cards. The table is fixed in code; only the "blocked" flags
  * can be changed (block/unblock) and are saved in NVS as a bit mask. */
 #define BLOCKED_KEY "blocked"
+/* The UIDs are the cards that come with the Wokwi MFRC522 reader, so the
+ * card colour matches the role: blue = student, green = staff,
+ * yellow = guest, red = admin. Carol has no Wokwi card (typed scans only). */
 static user_t users[] = {
-    { "A1B2C3D4", "Alice (Staff)",   false, false },
-    { "B2C3D4E5", "Brian (Student)", false, false },
-    { "C3D4E5F6", "Carol (Student)", false, false },
-    { "D4E5F6A7", "Dan (Admin)",     false, false },
-    { "DEADBEEF", "Lost Card",       true,  false },
+    { "11223344", "Alice (Staff)",   ROLE_STAFF,   false, false, "" },  /* Green Card  */
+    { "01020304", "Brian (Student)", ROLE_STUDENT, false, false, "" },  /* Blue Card   */
+    { "C3D4E5F6", "Carol (Student)", ROLE_STUDENT, false, false, "" },  /* typed only  */
+    { "AABBCCDD", "Dan (Admin)",     ROLE_ADMIN,   false, false, "" },  /* Red Card    */
+    { "55667788", "Grace (Guest)",   ROLE_GUEST,   false, false, "" },  /* Yellow Card */
+    { "C0FFEE99", "Lost Card",       ROLE_STUDENT, true,  false, "" },  /* Key Fob     */
 };
 #define NUM_USERS ((int)(sizeof(users) / sizeof(users[0])))
 _Static_assert(NUM_USERS <= 32, "blocked flags are saved as a 32-bit mask");
@@ -124,7 +131,9 @@ static QueueHandle_t     scan_queue;    /* scans -> access_task    */
 static QueueHandle_t     actuator_queue;/* decisions -> actuators  */
 
 /* Hooks for the other team members (see access_control.h) */
-static entrance_event_cb_t event_cb = NULL;     /* told about every decision */
+#define MAX_EVENT_CBS 4
+static entrance_event_cb_t event_cbs[MAX_EVENT_CBS];    /* told about every decision */
+static int                 event_cb_count = 0;
 
 #define MAX_EXT_CMDS 16
 typedef struct {
@@ -137,7 +146,22 @@ static int       ext_cmd_count = 0;
 
 void entrance_set_event_cb(entrance_event_cb_t cb)
 {
-    event_cb = cb;
+    if (cb != NULL && event_cb_count < MAX_EVENT_CBS) {
+        event_cbs[event_cb_count++] = cb;
+    }
+}
+
+static const char *const role_names[ROLE_COUNT]  = { "Student", "Staff", "Guest", "Admin" };
+static const char *const role_colors[ROLE_COUNT] = { "blue", "green", "yellow", "red" };
+
+const char *entrance_role_name(entrance_role_t role)
+{
+    return (role < ROLE_COUNT) ? role_names[role] : "?";
+}
+
+const char *entrance_role_color(entrance_role_t role)
+{
+    return (role < ROLE_COUNT) ? role_colors[role] : "none";
 }
 
 /* Commands handled inside this file (see handle_command) */
@@ -180,6 +204,46 @@ void entrance_set_emergency(bool on)
     xSemaphoreTake(state_mutex, portMAX_DELAY);
     emergency = on;
     xSemaphoreGive(state_mutex);
+}
+
+bool entrance_get_emergency(void)
+{
+    bool on = false;
+    if (state_mutex != NULL) {
+        xSemaphoreTake(state_mutex, portMAX_DELAY);
+        on = emergency;
+        xSemaphoreGive(state_mutex);
+    }
+    return on;
+}
+
+int entrance_get_users(entrance_user_t *out, int max)
+{
+    if (out == NULL || state_mutex == NULL) return 0;
+    int n = 0;
+    xSemaphoreTake(state_mutex, portMAX_DELAY);
+    for (int i = 0; i < NUM_USERS && n < max; i++, n++) {
+        snprintf(out[n].uid,  sizeof(out[n].uid),  "%s", users[i].uid);
+        snprintf(out[n].name, sizeof(out[n].name), "%s", users[i].name);
+        snprintf(out[n].since, sizeof(out[n].since), "%s", users[i].since);
+        out[n].role    = users[i].role;
+        out[n].blocked = users[i].blocked;
+        out[n].inside  = users[i].inside;
+    }
+    xSemaphoreGive(state_mutex);
+    return n;
+}
+
+esp_err_t entrance_submit_scan(bool is_entry, const char *uid)
+{
+    if (uid == NULL) return ESP_ERR_INVALID_ARG;
+    if (scan_queue == NULL) return ESP_ERR_INVALID_STATE;
+    scan_event_t ev;
+    ev.point = is_entry ? POINT_ENTRY : POINT_EXIT;
+    int i = 0;
+    for (; uid[i] && i < UID_LEN - 1; i++) ev.uid[i] = (char)toupper((unsigned char)uid[i]);
+    ev.uid[i] = '\0';
+    return (xQueueSend(scan_queue, &ev, 0) == pdTRUE) ? ESP_OK : ESP_ERR_TIMEOUT;
 }
 
 /* ------------------------------------------------------------------ */
@@ -265,6 +329,7 @@ static esp_err_t hardware_init(void)
 {
     esp_err_t e = gpio_out_init(PIN_LED_GRANT);
     if (e == ESP_OK) e = gpio_out_init(PIN_LED_DENY);
+
     if (e != ESP_OK) return e;
 
     ledc_timer_config_t timer = {
@@ -342,6 +407,7 @@ static void process_scan(const scan_event_t *ev)
     const char *point_txt = (ev->point == POINT_ENTRY) ? "ENTRY" : "EXIT";
     const char *reason    = "ok";
     char name[NAME_LEN]   = "-";
+    entrance_role_t role  = ROLE_STUDENT;
     bool granted          = false;
     char line[LOG_LINE_LEN];
     char now[16];
@@ -359,6 +425,7 @@ static void process_scan(const scan_event_t *ev)
         reason = "unknown tag";
     } else {
         snprintf(name, sizeof(name), "%s", u->name);
+        role = u->role;
 
         if (u->blocked) {
             reason = "tag blocked";
@@ -376,6 +443,7 @@ static void process_scan(const scan_event_t *ev)
 
     if (granted) {
         u->inside = (ev->point == POINT_ENTRY);
+        snprintf(u->since, sizeof(u->since), "%s", now);
         inside_count += (ev->point == POINT_ENTRY) ? 1 : -1;
     }
     count_after = inside_count;
@@ -388,15 +456,16 @@ static void process_scan(const scan_event_t *ev)
 
     xSemaphoreGive(state_mutex);                         /* --- unlock --- */
 
-    printf(">> %s %s (%s) -> %s [%s] | inside now: %d\n",
-           point_txt, ev->uid, name, granted ? "GRANTED" : "DENIED", reason, count_after);
+    printf(">> %s %s (%s, %s card) -> %s [%s] | inside now: %d\n",
+           point_txt, ev->uid, name, u ? entrance_role_color(role) : "no",
+           granted ? "GRANTED" : "DENIED", reason, count_after);
 
     /* system log (SD card): one line per decision */
     schedule_log("ACCESS,%s,%s,%s,%s,%s", ev->uid, name, point_txt,
                  granted ? "GRANTED" : "DENIED", reason);
 
     /* Tell the hub (cocis_system) about this decision. Called outside the lock. */
-    if (event_cb != NULL) {
+    if (event_cb_count > 0) {
         entrance_event_t pub;
         pub.is_entry = (ev->point == POINT_ENTRY);
         snprintf(pub.uid,  sizeof(pub.uid),  "%s", ev->uid);
@@ -404,10 +473,12 @@ static void process_scan(const scan_event_t *ev)
         pub.granted      = granted;
         pub.reason       = reason;          /* always a string literal */
         pub.inside_count = count_after;
-        event_cb(&pub);
+        pub.role         = role;
+        pub.known        = (u != NULL);
+        for (int i = 0; i < event_cb_count; i++) event_cbs[i](&pub);
     }
 
-    actuator_cmd_t cmd = { .door = ev->point, .granted = granted };
+    actuator_cmd_t cmd = { .door = ev->point, .granted = granted, .role = role };
     if (xQueueSend(actuator_queue, &cmd, 0) != pdTRUE) {
         printf("actuator busy: door/indicator command dropped\n");
         schedule_log("ACTUATOR,busy,%s %s dropped", point_txt, granted ? "GRANTED" : "DENIED");
@@ -443,15 +514,16 @@ static void actuator_task(void *arg)
             ledc_channel_t ch = (cmd.door == POINT_ENTRY) ? LEDC_CHANNEL_0 : LEDC_CHANNEL_1;
             gpio_set_level(PIN_LED_GRANT, 1);
             servo_set_angle(ch, 90);                       /* open  */
-            vTaskDelay(pdMS_TO_TICKS(DOOR_OPEN_MS));
+            beep(120);                                     /* short "welcome" beep */
+            vTaskDelay(pdMS_TO_TICKS(DOOR_OPEN_MS - 120));
             servo_set_angle(ch, 0);                        /* close */
             gpio_set_level(PIN_LED_GRANT, 0);
         } else {
             gpio_set_level(PIN_LED_DENY, 1);
-            beep(150);
-            vTaskDelay(pdMS_TO_TICKS(100));
-            beep(150);
-            vTaskDelay(pdMS_TO_TICKS(1500));              /* red LED stays on long enough to see */
+            beep(400);                                     /* two long beeps = denied */
+            vTaskDelay(pdMS_TO_TICKS(150));
+            beep(400);
+            vTaskDelay(pdMS_TO_TICKS(1000));              /* red LED stays on long enough to see */
             gpio_set_level(PIN_LED_DENY, 0);
         }
     }
@@ -473,7 +545,7 @@ static void print_help(void)
     for (int i = 0; i < ext_cmd_count; i++) {
         printf("  %s\n", ext_cmds[i].help);
     }
-    printf("Test UIDs: A1B2C3D4 B2C3D4E5 C3D4E5F6 D4E5F6A7 DEADBEEF(blocked)\n\n");
+    printf("Test UIDs: 11223344(staff, green) 01020304(student, blue) C3D4E5F6(student) AABBCCDD(admin, red) 55667788(guest, yellow) C0FFEE99(blocked fob)\n\n");
 }
 
 static void cmd_inside(void)
@@ -482,7 +554,9 @@ static void cmd_inside(void)
     printf("People inside: %d\n", inside_count);
     for (int i = 0; i < NUM_USERS; i++) {
         if (users[i].inside) {
-            printf("  %s  %s\n", users[i].uid, users[i].name);
+            printf("  %s  %-16s %-7s (%s card) since %s\n", users[i].uid, users[i].name,
+                   entrance_role_name(users[i].role), entrance_role_color(users[i].role),
+                   users[i].since);
         }
     }
     xSemaphoreGive(state_mutex);
@@ -492,7 +566,8 @@ static void cmd_users(void)
 {
     xSemaphoreTake(state_mutex, portMAX_DELAY);
     for (int i = 0; i < NUM_USERS; i++) {
-        printf("  %s  %-16s %s%s\n", users[i].uid, users[i].name,
+        printf("  %s  %-16s %-7s %-6s %s%s\n", users[i].uid, users[i].name,
+               entrance_role_name(users[i].role), entrance_role_color(users[i].role),
                users[i].inside ? "[inside] " : "[outside]",
                users[i].blocked ? " [BLOCKED]" : "");
     }
@@ -541,12 +616,7 @@ static void handle_command(char *line)
 
     if (strcmp(cmd, "in") == 0 || strcmp(cmd, "out") == 0) {
         if (n < 2) { printf("usage: %s <UID>\n", cmd); return; }
-        scan_event_t ev;
-        ev.point = (cmd[0] == 'i') ? POINT_ENTRY : POINT_EXIT;
-        int i = 0;
-        for (; a1[i] && i < UID_LEN - 1; i++) ev.uid[i] = (char)toupper((unsigned char)a1[i]);
-        ev.uid[i] = '\0';
-        if (xQueueSend(scan_queue, &ev, 0) != pdTRUE) {
+        if (entrance_submit_scan(cmd[0] == 'i', a1) != ESP_OK) {
             printf("scan queue full, try again\n");
         }
     } else if (strcmp(cmd, "inside") == 0) {
