@@ -20,13 +20,13 @@
 #define ENTRANCE_NAME_LEN  24
 
 /* Every card has a role, and every role has a card colour. The colour is shown
- * by the RGB LED at the door, on the console and on the web dashboard, so
+ * by the Wokwi card itself, the entrance LCD, the console and the web dashboard, so
  * security can tell at a glance who is inside (blue = student, ...). */
 typedef enum {
     ROLE_STUDENT = 0,   /* blue   */
     ROLE_STAFF,         /* green  */
     ROLE_GUEST,         /* yellow */
-    ROLE_ADMIN,         /* purple */
+    ROLE_ADMIN,         /* red    */
     ROLE_COUNT
 } entrance_role_t;
 
