@@ -76,7 +76,7 @@
 #define CMD_SOFTRESET   0x0F
 
 #define IRQ_TIMER       0x01    /* timeout: no card answered */
-#define IRQ_RX_IDLE     0x30    /* RxIRq | IdleIRq: transceive finished */
+#define IRQ_RX          0x20    /* RxIRq: an answer was received */
 
 #define PICC_REQA       0x26    /* "any new card here?" */
 #define PICC_WUPA       0x52    /* wake up any card (also halted ones) */
@@ -194,16 +194,21 @@ static int mfrc_transceive(reader_t *r, const uint8_t *data, int len,
     reg_write(r, REG_COMMAND, CMD_TRANSCEIVE);
     reg_write(r, REG_BIT_FRAMING, 0x80 | tx_bits);   /* StartSend */
 
-    /* wait until the reader is done (RxIRq or IdleIRq) or the timer runs
-     * out (TimerIRq = no card answered); at most about 50 ms. vTaskDelay
+    /* wait until the card answered (RxIRq) or the timer runs out
+     * (TimerIRq = no card answered); at most about 50 ms. vTaskDelay
      * lets the other tasks run while we wait. */
     uint8_t irq = 0;
     bool done = false;
     for (int i = 0; i < 6; i++) {
         irq = reg_read(r, REG_COMIRQ);
-        if (irq & IRQ_RX_IDLE) { done = true; break; }
-        if (irq & IRQ_TIMER) break;
+        if (irq & IRQ_RX) { done = true; break; }   /* the card answered */
+        if (irq & IRQ_TIMER) break;                  /* nobody answered */
         vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    if (done) {
+        /* give the reader time to put the whole answer into the FIFO */
+        vTaskDelay(pdMS_TO_TICKS(10));
+        irq = reg_read(r, REG_COMIRQ);
     }
     reg_write(r, REG_BIT_FRAMING, tx_bits);    /* clear StartSend */
 
@@ -229,18 +234,31 @@ static bool mfrc_request(reader_t *r, uint8_t cmd)
     return n == 2;
 }
 
-/* Reads the 4-byte UID: the card sends UID0..UID3 + BCC (XOR of the four) */
+/* Reads the 4-byte UID: the card sends UID0..UID3 + BCC (XOR of the four).
+ * Returns false when no UID came back or the BCC check fails. */
 static bool mfrc_anticoll(reader_t *r, uint8_t uid[4])
 {
     uint8_t cmd[2] = { PICC_SEL_CL1, 0x20 };
-    uint8_t back[5];
+    uint8_t back[8] = { 0 };
+    uint8_t irq = 0, err = 0;
     /* ValuesAfterColl = 0: clear the bits after a collision */
     reg_write(r, REG_COLL, reg_read(r, REG_COLL) & 0x7F);
-    if (mfrc_transceive(r, cmd, 2, 0, back, sizeof(back), NULL, NULL) != 5) return false;
-    uint8_t bcc = back[0] ^ back[1] ^ back[2] ^ back[3];
-    if (bcc != back[4]) return false;          /* corrupted read */
-    memcpy(uid, back, 4);
-    return true;
+    int n = mfrc_transceive(r, cmd, 2, 0, back, sizeof(back), &irq, &err);
+
+    bool ok = false;
+    if (n >= 5) {
+        uint8_t bcc = back[0] ^ back[1] ^ back[2] ^ back[3];
+        ok = (bcc == back[4]);                 /* false = corrupted read */
+    } else if (n == 4) {
+        ok = true;                             /* UID without BCC byte */
+    }
+    if (ok) {
+        memcpy(uid, back, 4);
+    } else if (r->uid_errors % 50 == 0) {      /* first failure, then every 50th */
+        printf("[RFID %s] UID read failed: %d bytes (%02X %02X %02X %02X %02X), ComIrq 0x%02X, Error 0x%02X\n",
+               r->name, n, back[0], back[1], back[2], back[3], back[4], irq, err);
+    }
+    return ok;
 }
 
 /* Reads a card's UID as 8 upper-case hex chars ("01020304").
