@@ -70,6 +70,7 @@ Line numbers below are approximate (`file:line`). Search for the function name i
 - *Why write your own driver?* — We wanted to understand the reader, not hide it in a library. The driver talks to the MFRC522 registers directly, so the same code would work with a real reader.
 - *What is BCC?* — Block Check Character: the XOR of the 4 UID bytes. The card sends it after the UID. If it does not match, the read was corrupted and we ignore it.
 - *How do two readers share one bus?* — Same SCK and MOSI; each has its own chip-select pin and its own MISO line, so only the selected reader answers and the two answers can never mix. Only the rfid task talks to them, one at a time.
+- *What was the hardest bug?* — The card was seen but its UID came back as `01 03 04 00 00` instead of `01 02 03 04 04`: every second byte was lost. The reader takes the next FIFO byte for every address byte it receives, so reading the FIFO one byte per transfer threw half the bytes away. `fifo_read()` now reads the whole answer in one SPI transfer, like the Arduino MFRC522 library. The `rfid` command and the `UID read failed` debug line helped find it.
 - *Why software SPI?* — It lets each reader have its own MISO pin (35 and 36). The readers are slow devices, so about 250 kHz is plenty.
 - *What if a reader is missing?* — `VersionReg` reads `0x00` or `0xFF`, so `rfid_task` prints `NOT FOUND ... use typed in/out` and skips that reader. The rest of the system keeps working.
 
