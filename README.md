@@ -180,10 +180,10 @@ The card list is fixed in the firmware (`users[]` in `access_control.c`). The UI
 | Yellow Card | `55667788` | Grace | Guest | yellow |
 | Red Card | `AABBCCDD` | Dan | Admin | red |
 | Key Fob (orange) | `C0FFEE99` | Lost Card | (blocked) | — |
-| NFC Tag (grey) | `88041122` | not registered | unknown | — |
+| NFC Tag (grey) | `04112233` | not registered | unknown | — |
 | (none, typed only) | `C3D4E5F6` | Carol | Student | blue |
 
-The NFC Tag has a 7-byte UID. The driver reads only the first 4 bytes it sends (`88041122`), and that ID is not registered, so it is denied as an unknown tag.
+The NFC Tag has a 7-byte UID. The driver reads only its first 4 bytes (`04112233`), and that ID is not registered, so it is denied as an unknown tag.
 
 ## Working on the repo
 

@@ -276,9 +276,9 @@ static bool mfrc_anticoll(reader_t *r, uint8_t uid[4])
 }
 
 /* Reads a card's UID as 8 upper-case hex chars ("01020304").
- * Returns false when there is no card. A 7-byte tag (the grey NFC tag)
- * answers 0x88 (cascade tag) + its first 3 bytes here; we keep those 4 bytes
- * as its ID. It is not registered, so it is denied as an unknown tag. */
+ * Returns false when there is no card. A 7-byte tag (the grey NFC tag,
+ * 04:11:22:33:44:55:66) gives its first 4 bytes here, so it reads as
+ * "04112233". It is not registered, so it is denied as an unknown tag. */
 static bool read_card(reader_t *r, char out[9])
 {
     uint8_t uid[4];
