@@ -94,9 +94,9 @@ All parts are wired to the one ESP32 DevKit C v4 in `cocis_system/diagram.json`.
 
 **RFID driver (`rfid.c`).** It is a hand-written, register-level driver (no library). SPI is done in software (`spi_byte()`: set MOSI, clock high, read MISO, clock low, 8 times per byte), so each reader can have its own MISO line. One register access is two bytes: the address byte `(reg << 1) & 0x7E` (+ `0x80` for a read), then the data. At start-up the driver does a soft reset, sets the timer (about 25 ms timeout), turns the antenna on and reads `VersionReg`. Any value except `0x00` or `0xFF` means a reader answered (`[RFID] ENTRY reader v0x%02X OK`); `0x00` or `0xFF` means nothing answered on that reader's MISO line (`NOT FOUND ..., use typed in/out`). About every 50 ms the `rfid` task asks each reader:
 
-1. **WUPA** (wake up, 7 bits): a card answers with 2 bytes (ATQA). If not, there is no card (tried twice).
-2. **Anticollision** (`0x93 0x20`): the card sends 4 UID bytes + BCC. The driver checks BCC = UID0 ^ UID1 ^ UID2 ^ UID3, so a corrupted read is ignored. The grey NFC Tag has a 7-byte UID (`04:11:22:33:44:55:66`); in Wokwi it answers with its first 4 bytes, so it reads as `04112233`. That ID is not registered, so it is denied as an unknown tag.
-3. **Debounce:** a card is reported once (`[RFID ENTRY] card 01020304`). The same card is reported again only after 2 empty polls (card removed).
+1. **REQA** ("any new card?", 7 bits), then **WUPA** (wake up, also a card that was just read): a card answers with 2 bytes (ATQA). If neither is answered, there is no card.
+2. **Anticollision** (`0x93 0x20`): the card sends 4 UID bytes + BCC. The answer is read from the FIFO in **one** SPI transfer (`fifo_read()`): the reader hands out the next FIFO byte for every address byte it receives, so reading byte by byte would lose every second byte. The driver checks BCC = UID0 ^ UID1 ^ UID2 ^ UID3, so a corrupted read is ignored. The grey NFC Tag has a 7-byte UID (`04:11:22:33:44:55:66`); in Wokwi it answers with its first 4 bytes, so it reads as `04112233`. That ID is not registered, so it is denied as an unknown tag.
+3. **Debounce:** a card is reported once (`[RFID ENTRY] card 01020304`). The same card is reported again only after 3 empty polls (card removed).
 
 **Card roles and colours.** Every card has a role: Student (blue), Staff (green), Guest (yellow), Admin (red). The test cards match the Wokwi card presets, so the colour of the card you tap is the role colour. The LCD shows it (`Student BLUE card`), `inside` and `users` print the role and colour, `inside` also shows the time the person came in, and the dashboard shows a colour chip.
 
@@ -107,6 +107,10 @@ All parts are wired to the one ESP32 DevKit C v4 in `cocis_system/diagram.json`.
 3. Entry only: is the person already inside? If so: already inside (anti-passback).
 4. Exit only: is the person inside? If not: not inside.
 5. Is the building open now? If not, entry is denied, and exit is denied unless emergency mode is on (outside access hours or emergency exit).
+
+![Figure 3. Card scan flowchart](images/00-access-flow.png)
+
+*Figure 3. Card scan flowchart: the rfid task reads the card (REQA/WUPA, anticollision, BCC check, debounce), then the access task (`process_scan()`) makes the decision in the order above. (Source: `docs/images/access_flow.dot`.)*
 
 A granted decision updates the “who is inside” record, opens the matching door for 3 s, lights the green LED and gives one short beep. A denied one lights the red LED and gives two long beeps. Every decision is printed, shown on the LCD and written to the system log.
 
@@ -204,25 +208,25 @@ The brief asks for innovation. These features go beyond the basic requirements:
 
 ### 1.9 The system running (screenshots)
 
-![Figure 3. Boot log](images/02-boot.png)
+![Figure 4. Boot log](images/02-boot.png)
 
-*Figure 3. Serial output at start-up: both MFRC522 readers answer (`v0x92 OK`), the Blue Card is read at ENTRY and then at EXIT, the hub updates building occupancy, and the ESP32 joins Wi-Fi and starts the dashboard (`[WEB] dashboard on port 80`).*
+*Figure 4. Serial output at start-up: both MFRC522 readers answer (`v0x92 OK`), the Blue Card is read at ENTRY and then at EXIT, the hub updates building occupancy, and the ESP32 joins Wi-Fi and starts the dashboard (`[WEB] dashboard on port 80`).*
 
-![Figure 4. Access granted](images/03-granted.png)
+![Figure 5. Access granted](images/03-granted.png)
 
-*Figure 4. Access granted. The Blue Card is held on the ENTRY reader (UID 01:02:03:04). The console prints `[RFID ENTRY] card 01020304` and `GRANTED`, the LCD shows the person inside (`In:1`), and the dashboard shows Brian as a blue Student chip with the time he came in.*
+*Figure 5. Access granted. The Blue Card is held on the ENTRY reader (UID 01:02:03:04). The console prints `[RFID ENTRY] card 01020304` and `GRANTED`, the LCD shows the person inside (`In:1`), and the dashboard shows Brian as a blue Student chip with the time he came in.*
 
-![Figure 5. Access denied with a security alert](images/04-denied-security-alert.png)
+![Figure 6. Access denied with a security alert](images/04-denied-security-alert.png)
 
-*Figure 5. Access denied. The NFC Tag is not registered: the console prints `DENIED [unknown tag]` and the dashboard pops up a red **SECURITY ALERT: DENIED - unknown card** with an alarm tone.*
+*Figure 6. Access denied. The NFC Tag is not registered: the console prints `DENIED [unknown tag]` and the dashboard pops up a red **SECURITY ALERT: DENIED - unknown card** with an alarm tone.*
 
-![Figure 6. Dashboard sign-in](images/05-dashboard-login.png)
+![Figure 7. Dashboard sign-in](images/05-dashboard-login.png)
 
-*Figure 6. The dashboard sign-in page. It uses the admin PIN, with the same 3-try lockout as the serial console.*
+*Figure 7. The dashboard sign-in page. It uses the admin PIN, with the same 3-try lockout as the serial console.*
 
-![Figure 7. Security Dashboard](images/06-dashboard.png)
+![Figure 8. Security Dashboard](images/06-dashboard.png)
 
-*Figure 7. The Security Dashboard with four people inside: each card colour is a role (Alice green Staff, Brian blue Student, Dan red Admin, Grace yellow Guest). Live alerts list every entry, Who is out shows Carol and the blocked lost card, and the Admin panel sets opening hours, emergency mode, test scans and blocks cards.*
+*Figure 8. The Security Dashboard with four people inside: each card colour is a role (Alice green Staff, Brian blue Student, Dan red Admin, Grace yellow Guest). Live alerts list every entry, Who is out shows Carol and the blocked lost card, and the Admin panel sets opening hours, emergency mode, test scans and blocks cards.*
 
 ---
 
