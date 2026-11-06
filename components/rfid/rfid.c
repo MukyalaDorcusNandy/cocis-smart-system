@@ -57,9 +57,14 @@
 #define REG_FIFO_DATA   0x09
 #define REG_FIFO_LEVEL  0x0A
 #define REG_BIT_FRAMING 0x0D
+#define REG_CONTROL     0x0C
+#define REG_COLL        0x0E
 #define REG_MODE        0x11
+#define REG_TX_MODE     0x12
+#define REG_RX_MODE     0x13
 #define REG_TX_CONTROL  0x14
 #define REG_TX_ASK      0x15
+#define REG_MOD_WIDTH   0x24
 #define REG_T_MODE      0x2A
 #define REG_T_PRESCALER 0x2B
 #define REG_T_RELOAD_H  0x2C
@@ -71,9 +76,9 @@
 #define CMD_SOFTRESET   0x0F
 
 #define IRQ_TIMER       0x01    /* timeout: no card answered */
-#define IRQ_RX          0x20    /* RxIRq: an answer was received */
 #define IRQ_RX_IDLE     0x30    /* RxIRq | IdleIRq: transceive finished */
 
+#define PICC_REQA       0x26    /* "any new card here?" */
 #define PICC_WUPA       0x52    /* wake up any card (also halted ones) */
 #define PICC_SEL_CL1    0x93    /* anticollision / select, cascade level 1 */
 
@@ -88,6 +93,11 @@ typedef struct {
     char        last_uid[9]; /* card already reported ("" = none) */
     int         empty_polls; /* polls in a row with no card */
     int         cards_read;  /* how many cards this reader reported */
+    /* diagnostics for the "rfid" command */
+    int         answers;     /* REQA/WUPA answered (a card was seen) */
+    int         uid_errors;  /* anticollision failed (no UID / bad BCC) */
+    uint8_t     last_irq;    /* ComIrqReg after the last REQA */
+    uint8_t     last_err;    /* ErrorReg after the last REQA */
 } reader_t;
 
 static reader_t readers[2] = {
@@ -143,6 +153,10 @@ static void mfrc_init(reader_t *r)
 {
     reg_write(r, REG_COMMAND, CMD_SOFTRESET);
     vTaskDelay(pdMS_TO_TICKS(50));
+    /* same set-up as the common Arduino MFRC522 library */
+    reg_write(r, REG_TX_MODE, 0x00);           /* 106 kbit/s, no CRC on send */
+    reg_write(r, REG_RX_MODE, 0x00);
+    reg_write(r, REG_MOD_WIDTH, 0x26);
     /* timer: about 25 ms timeout, so "no card" is detected quickly */
     reg_write(r, REG_T_MODE, 0x80);
     reg_write(r, REG_T_PRESCALER, 0xA9);
@@ -154,32 +168,50 @@ static void mfrc_init(reader_t *r)
     reg_write(r, REG_TX_CONTROL, reg_read(r, REG_TX_CONTROL) | 0x03);
 }
 
+/* Writes several bytes into the FIFO in one SPI transfer
+ * (the address byte once, then the data bytes). */
+static void fifo_write(reader_t *r, const uint8_t *data, int len)
+{
+    gpio_set_level(r->cs_pin, 0);
+    spi_byte(r, (uint8_t)((REG_FIFO_DATA << 1) & 0x7E));
+    for (int i = 0; i < len; i++) spi_byte(r, data[i]);
+    gpio_set_level(r->cs_pin, 1);
+}
+
 /* Sends 'len' bytes to the card and reads its answer into 'back'.
- * tx_bits = bits of the last byte to send (0 = whole byte, 7 for WUPA).
+ * tx_bits = bits of the last byte to send (0 = whole byte, 7 for REQA/WUPA).
+ * Same steps as the Arduino MFRC522 library (PCD_CommunicateWithPICC).
  * Returns the number of bytes received, or -1 (no card / error). */
 static int mfrc_transceive(reader_t *r, const uint8_t *data, int len,
-                           uint8_t tx_bits, uint8_t *back, int back_max)
+                           uint8_t tx_bits, uint8_t *back, int back_max,
+                           uint8_t *irq_out, uint8_t *err_out)
 {
     reg_write(r, REG_COMMAND, CMD_IDLE);       /* stop anything running */
     reg_write(r, REG_COMIRQ, 0x7F);            /* clear all IRQ flags */
     reg_write(r, REG_FIFO_LEVEL, 0x80);        /* flush the FIFO */
-    for (int i = 0; i < len; i++) {
-        reg_write(r, REG_FIFO_DATA, data[i]);
-    }
+    fifo_write(r, data, len);                  /* what to send to the card */
+    reg_write(r, REG_BIT_FRAMING, tx_bits);    /* bits of the last byte */
     reg_write(r, REG_COMMAND, CMD_TRANSCEIVE);
     reg_write(r, REG_BIT_FRAMING, 0x80 | tx_bits);   /* StartSend */
 
-    /* wait for "answer received" or "timeout" (at most about 30 ms) */
+    /* wait until the reader is done (RxIRq or IdleIRq) or the timer runs
+     * out (TimerIRq = no card answered); at most about 50 ms. vTaskDelay
+     * lets the other tasks run while we wait. */
     uint8_t irq = 0;
-    for (int i = 0; i < 30; i++) {
+    bool done = false;
+    for (int i = 0; i < 6; i++) {
         irq = reg_read(r, REG_COMIRQ);
-        if (irq & (IRQ_RX_IDLE | IRQ_TIMER)) break;
-        ets_delay_us(1000);
+        if (irq & IRQ_RX_IDLE) { done = true; break; }
+        if (irq & IRQ_TIMER) break;
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
     reg_write(r, REG_BIT_FRAMING, tx_bits);    /* clear StartSend */
 
-    if (!(irq & IRQ_RX)) return -1;            /* nothing received: no card */
-    if (reg_read(r, REG_ERROR) & 0x1B) return -1;   /* buffer/parity/CRC/protocol error */
+    uint8_t err = reg_read(r, REG_ERROR);
+    if (irq_out) *irq_out = irq;
+    if (err_out) *err_out = err;
+    if (!done) return -1;                      /* timeout: no card */
+    if (err & 0x13) return -1;                 /* buffer overflow / parity / protocol error */
 
     int n = reg_read(r, REG_FIFO_LEVEL);
     if (n > back_max) n = back_max;
@@ -189,12 +221,12 @@ static int mfrc_transceive(reader_t *r, const uint8_t *data, int len,
     return n;
 }
 
-/* "Is a card there?" - WUPA (7 bits), a card answers with 2 bytes (ATQA) */
-static bool mfrc_request(reader_t *r)
+/* "Is a card there?" - REQA or WUPA (7 bits); a card answers ATQA (2 bytes) */
+static bool mfrc_request(reader_t *r, uint8_t cmd)
 {
-    uint8_t cmd = PICC_WUPA;
     uint8_t atqa[2];
-    return mfrc_transceive(r, &cmd, 1, 7, atqa, sizeof(atqa)) == 2;
+    int n = mfrc_transceive(r, &cmd, 1, 7, atqa, sizeof(atqa), &r->last_irq, &r->last_err);
+    return n == 2;
 }
 
 /* Reads the 4-byte UID: the card sends UID0..UID3 + BCC (XOR of the four) */
@@ -202,7 +234,9 @@ static bool mfrc_anticoll(reader_t *r, uint8_t uid[4])
 {
     uint8_t cmd[2] = { PICC_SEL_CL1, 0x20 };
     uint8_t back[5];
-    if (mfrc_transceive(r, cmd, 2, 0, back, sizeof(back)) != 5) return false;
+    /* ValuesAfterColl = 0: clear the bits after a collision */
+    reg_write(r, REG_COLL, reg_read(r, REG_COLL) & 0x7F);
+    if (mfrc_transceive(r, cmd, 2, 0, back, sizeof(back), NULL, NULL) != 5) return false;
     uint8_t bcc = back[0] ^ back[1] ^ back[2] ^ back[3];
     if (bcc != back[4]) return false;          /* corrupted read */
     memcpy(uid, back, 4);
@@ -216,11 +250,14 @@ static bool mfrc_anticoll(reader_t *r, uint8_t uid[4])
 static bool read_card(reader_t *r, char out[9])
 {
     uint8_t uid[4];
-    /* a card that was just read may ignore one WUPA, so try again then */
-    if (!mfrc_request(r)) {
-        if (r->last_uid[0] == '\0' || !mfrc_request(r)) return false;
+    /* REQA finds a new card. A card that was just read waits in another
+     * state and only answers WUPA, so try WUPA too. */
+    if (!mfrc_request(r, PICC_REQA) && !mfrc_request(r, PICC_WUPA)) return false;
+    r->answers++;
+    if (!mfrc_anticoll(r, uid)) {
+        r->uid_errors++;
+        return false;
     }
-    if (!mfrc_anticoll(r, uid)) return false;
     snprintf(out, 9, "%02X%02X%02X%02X", uid[0], uid[1], uid[2], uid[3]);
     return true;
 }
@@ -295,6 +332,8 @@ static void cmd_rfid(const char *args)
         printf("  %-5s reader: %s (version 0x%02X), cards read %d, card on reader: %s\n",
                r->name, r->found ? "OK" : "NOT FOUND", r->version, r->cards_read,
                r->last_uid[0] ? r->last_uid : "none");
+        printf("        card answers %d, UID errors %d, last ComIrq 0x%02X, last Error 0x%02X\n",
+               r->answers, r->uid_errors, r->last_irq, r->last_err);
     }
     xSemaphoreGive(state_lock);
     printf("  tap a card: click a reader, pick a card, press Tap (or type in/out <UID>)\n");
