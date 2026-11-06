@@ -69,7 +69,7 @@ All parts are wired to the one ESP32 DevKit C v4 in `cocis_system/diagram.json`.
 | Servo (exit door) | Opens the exit door for 3 s | GPIO 19 (PWM, 50 Hz) |
 | Green LED + 220 Ω | Access granted | GPIO 25 |
 | Red LED + 220 Ω | Access denied | GPIO 26 |
-| Buzzer | Deny tone (2 kHz) | GPIO 27 |
+| Buzzer | Short beep when granted, two long beeps when denied (2 kHz) | GPIO 27 |
 | RGB LED (common cathode) | Shows the card colour when access is granted | R 15, G 2, B 12 |
 | MFRC522 reader, ENTRY (custom chip) | Reads cards at the entry door | SPI3: SCK 16, MOSI 17, MISO 35, SDA (CS) 5 |
 | MFRC522 reader, EXIT (custom chip) | Reads cards at the exit door | same SPI3 bus, SDA (CS) 23 |
@@ -97,7 +97,7 @@ All parts are wired to the one ESP32 DevKit C v4 in `cocis_system/diagram.json`.
 4. Exit only: is the person inside? If not: not inside.
 5. Is the building open now? If not, entry is denied, and exit is denied unless emergency mode is on (outside access hours or emergency exit).
 
-A granted decision updates the “who is inside” record, opens the matching door for 3 s and lights the green LED. A denied one lights the red LED and sounds the buzzer. Every decision is printed and written to the system log.
+A granted decision updates the “who is inside” record, opens the matching door for 3 s, lights the green LED and gives one short beep. A denied one lights the red LED and gives two long beeps. Every decision is printed and written to the system log.
 
 **Safety note.** The assignment restricts both entry and exit outside configured hours. A real building must always preserve emergency egress. In this simulation, exit is denied outside hours unless an authenticated administrator turns on emergency mode. That models the coursework rule and still provides a safe override.
 
