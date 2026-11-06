@@ -10,6 +10,7 @@
 #include "room_control.h"
 #include "access_control.h"
 #include "hub.h"
+#include "rfid.h"
 #include "web_dashboard.h"
 
 /* Adapter for the web dashboard: it cannot call the hub (main/ is not a
@@ -50,6 +51,10 @@ void app_main(void)
     ESP_ERROR_CHECK(room_control_start(2));
     ESP_ERROR_CHECK(entrance_start());
 
-    /* 5. Wi-Fi + web dashboard (does not wait for Wi-Fi; port 80 -> localhost:8180) */
+    /* 5. the two MFRC522 RFID readers (ENTRY, EXIT); they send scans to the
+     *    entrance, so they start after it */
+    ESP_ERROR_CHECK(rfid_start());
+
+    /* 6. Wi-Fi + web dashboard (does not wait for Wi-Fi; port 80 -> localhost:8180) */
     ESP_ERROR_CHECK(web_dashboard_start());
 }
