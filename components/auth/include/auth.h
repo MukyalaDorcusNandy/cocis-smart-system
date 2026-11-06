@@ -20,6 +20,11 @@ esp_err_t auth_init(void);                   /* loads the PIN hash or creates th
 bool      auth_login(const char *pin);       /* true if the PIN is right and login is not locked */
 void      auth_logout(void);                 /* ends the admin session */
 
+/* Web dashboard sign-in: checks the PIN with the SAME 3-tries / 30 s lockout
+ * counter as auth_login(), logs "AUTH,web login OK/failed", but does NOT open
+ * the console session (the web keeps its own token). */
+bool      auth_check_pin(const char *pin);
+
 /* true while a session is open. Applies the idle timeout, and restarts the
  * idle timer, so call it at the start of every protected command. */
 bool      auth_is_logged_in(void);
