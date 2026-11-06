@@ -130,7 +130,7 @@ Line numbers below are approximate (`file:line`). Search for the function name i
 
 **(3) Live demo.**
 
-1. Show the Wokwi diagram and the zones: rooms (PIRs + LEDs) on the left, the ESP32 in the middle, the LCD on top, the readers and door servos on the right, green/red LEDs and buzzer at the bottom right, the SD card at the bottom.
+1. Show the Wokwi diagram and the zones: the rooms (PIRs + room LEDs) at the top left, above the ESP32; the ENTRY reader and its door servo at the top right; the LCD on the right between the two readers; the EXIT reader and its door servo at the bottom right; the SD card, the green/red LEDs and the buzzer at the bottom left. Explain why each wire starts at the part: Wokwi draws the first leg sideways, so the wires do not cross the board.
 2. Hover or click a wire to show it goes to the pin in the table.
 3. Start the simulator. Show `[LCD] 16x2 LCD ready at 0x27 (SDA 15, SCL 2)` and `[RFID] ENTRY reader v0x.. OK` (the wiring works). The LCD shows `CoCIS Entrance` / `Tap your card`, then the clock and `In:0   OPEN`.
 4. Tap the Blue Card on ENTRY: `WELCOME Brian` / `Student BLUE card` for 3 s, then the idle screen with `In:1`.

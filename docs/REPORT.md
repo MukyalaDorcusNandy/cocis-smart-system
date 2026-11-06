@@ -58,7 +58,7 @@ The entrance runs as a chain of four tasks (rfid, console, access, actuator). Bo
 
 ### 1.3 Hardware components and pin plan
 
-All parts are wired to the one ESP32 DevKit C v4 in `cocis_system/diagram.json`. The parts are placed in zones: the rooms (PIRs + LEDs) on the left, the ESP32 in the middle, the LCD on top, the readers and door servos on the right, the green/red LEDs and buzzer at the bottom right, and the SD card at the bottom. The pin plan below has no clashes. It is also recorded in `room_config.h`, `access_control.c`, `rfid.c`, `lcd_display.c`, `storage.c` and `PROJECT_STRUCTURE.md`.
+All parts are wired to the one ESP32 DevKit C v4 in `cocis_system/diagram.json`. The parts are placed in zones around the ESP32: the rooms (PIRs + room LEDs) at the top left, above the ESP32; the ENTRY reader and its door servo at the top right; the LCD on the right between the two readers; the EXIT reader and its door servo at the bottom right; the SD card, the green/red LEDs and the buzzer at the bottom left. The pin plan below has no clashes. It is also recorded in `room_config.h`, `access_control.c`, `rfid.c`, `lcd_display.c`, `storage.c` and `PROJECT_STRUCTURE.md`.
 
 | Part | Purpose | ESP32 pins |
 |---|---|---|

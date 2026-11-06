@@ -152,6 +152,6 @@ Room and entrance callbacks only call `xQueueSend(..., 0)` or copy into the aler
 | Entrance LEDs (grant / deny) and buzzer (LEDC 2 kHz) | 25 / 26 / 27 | `access_control.c` |
 | Entrance LCD SDA / SCL (I2C, address 0x27) | 15 / 2 | `lcd_display.c` |
 
-**Circuit layout (`diagram.json`).** The parts are placed in zones so nothing overlaps: the rooms (PIRs + room LEDs) on the left, the ESP32 in the middle, the LCD on top, the two readers and the door servos on the right, the green/red LEDs and the buzzer at the bottom right, and the SD card at the bottom.
+**Circuit layout (`diagram.json`).** The parts are placed in zones around the ESP32 so nothing overlaps: the rooms (PIRs + room LEDs) at the top left, above the ESP32; the ENTRY reader and its door servo at the top right; the LCD on the right between the two readers; the EXIT reader and its door servo at the bottom right; the SD card, the green/red LEDs and the buzzer at the bottom left. Every wire is listed part-first in `diagram.json`, because Wokwi draws the first leg of a wire sideways from its first end: the wire runs through empty space and then straight along the ESP32 pin column, instead of across the board.
 
 Change a pin only after telling the group, and update `diagram.json` to match.
