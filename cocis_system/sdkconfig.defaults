@@ -3,7 +3,8 @@
 CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 # Wi-Fi event handlers write to the log (SD card): give the event task room.
 CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=6144
-# Long X-Token header + browser headers.
-CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+# Browsers send all localhost cookies with every request: allow big headers
+# (otherwise Chrome gets "431 Header fields are too long").
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=8192
 # Wokwi ESP32 has 4 MB flash.
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
