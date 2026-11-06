@@ -20,7 +20,7 @@ Following the lecturer's ruling (free Wokwi supports one microcontroller), the w
 
 - **Entrance.** A card is tapped on the ENTRY or the EXIT reader and is granted or denied. It is denied if the card is unknown or blocked, if the person scans in twice or out without being inside (anti-passback), or if the building is closed.
   - **Outside opening hours both entry and exit are denied**, also for people still inside (coursework §2.6). Only emergency mode, switched on by an admin, allows exit outside hours.
-  - Granted: green LED, the **RGB LED shows the card colour**, and the entry or exit door servo opens for 3 s. Denied: red LED and a buzzer beep.
+  - Granted: green LED, the **RGB LED shows the card colour**, and the entry or exit door servo opens for 3 s. Denied: red LED and two long buzzer beeps. Granted also gives one short beep.
   - The system keeps a list of who is inside, with each person's role and the time they came in.
 - **Two RFID readers (MFRC522).** Wokwi has no official MFRC522 part, so the group built one as a **Wokwi custom chip** (`cocis_system/chips/`). It speaks the real MFRC522 SPI register protocol, and the firmware talks to it with a real MFRC522 driver. Typing `in <UID>` / `out <UID>` still works as a backup.
 - **Card roles and colours.** Student = blue, Staff = green, Guest = yellow, Admin = purple.

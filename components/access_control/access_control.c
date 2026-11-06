@@ -529,16 +529,17 @@ static void actuator_task(void *arg)
             gpio_set_level(PIN_LED_GRANT, 1);
             rgb_show(cmd.role, true);                      /* card colour */
             servo_set_angle(ch, 90);                       /* open  */
-            vTaskDelay(pdMS_TO_TICKS(DOOR_OPEN_MS));
+            beep(120);                                     /* short "welcome" beep */
+            vTaskDelay(pdMS_TO_TICKS(DOOR_OPEN_MS - 120));
             servo_set_angle(ch, 0);                        /* close */
             gpio_set_level(PIN_LED_GRANT, 0);
             rgb_show(cmd.role, false);
         } else {
             gpio_set_level(PIN_LED_DENY, 1);
-            beep(150);
-            vTaskDelay(pdMS_TO_TICKS(100));
-            beep(150);
-            vTaskDelay(pdMS_TO_TICKS(1500));              /* red LED stays on long enough to see */
+            beep(400);                                     /* two long beeps = denied */
+            vTaskDelay(pdMS_TO_TICKS(150));
+            beep(400);
+            vTaskDelay(pdMS_TO_TICKS(1000));              /* red LED stays on long enough to see */
             gpio_set_level(PIN_LED_DENY, 0);
         }
     }
