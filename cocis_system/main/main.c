@@ -12,6 +12,7 @@
 #include "hub.h"
 #include "rfid.h"
 #include "web_dashboard.h"
+#include "lcd_display.h"
 
 /* Adapter for the web dashboard: it cannot call the hub (main/ is not a
  * component), so it asks through this function. */
@@ -44,6 +45,9 @@ void app_main(void)
      * (must be before entrance_start, which starts the console) */
     web_dashboard_set_room_provider(web_room);
     ESP_ERROR_CHECK(web_dashboard_register_commands());
+
+    /* entrance LCD: adds an entrance listener, so it must be before entrance_start */
+    ESP_ERROR_CHECK(lcd_display_start());
 
     /* 4. the three terminals; the entrance is last because it starts the
      *    console (the only reader of the serial port) and prints the help */

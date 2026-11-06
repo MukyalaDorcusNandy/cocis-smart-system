@@ -67,9 +67,6 @@
 #define PIN_LED_GRANT   25
 #define PIN_LED_DENY    26
 #define PIN_BUZZER      27
-#define PIN_RGB_R       15      /* RGB LED: shows the card colour (role) */
-#define PIN_RGB_G       2
-#define PIN_RGB_B       12
 
 /* ------------------------------------------------------------------ */
 /* 2. DATA TYPES                                                       */
@@ -86,7 +83,7 @@ typedef struct {
 typedef struct {
     scan_point_t door;
     bool granted;
-    entrance_role_t role;   /* card colour shown on the RGB LED */
+    entrance_role_t role;   /* card colour (role) of the person */
 } actuator_cmd_t;
 
 /* One registered person */
@@ -105,13 +102,16 @@ typedef struct {
 /* Registered cards. The table is fixed in code; only the "blocked" flags
  * can be changed (block/unblock) and are saved in NVS as a bit mask. */
 #define BLOCKED_KEY "blocked"
+/* The UIDs are the cards that come with the Wokwi MFRC522 reader, so the
+ * card colour matches the role: blue = student, green = staff,
+ * yellow = guest, red = admin. Carol has no Wokwi card (typed scans only). */
 static user_t users[] = {
-    { "A1B2C3D4", "Alice (Staff)",   ROLE_STAFF,   false, false, "" },
-    { "B2C3D4E5", "Brian (Student)", ROLE_STUDENT, false, false, "" },
-    { "C3D4E5F6", "Carol (Student)", ROLE_STUDENT, false, false, "" },
-    { "D4E5F6A7", "Dan (Admin)",     ROLE_ADMIN,   false, false, "" },
-    { "E5F6A7B8", "Grace (Guest)",   ROLE_GUEST,   false, false, "" },
-    { "DEADBEEF", "Lost Card",       ROLE_STUDENT, true,  false, "" },
+    { "11223344", "Alice (Staff)",   ROLE_STAFF,   false, false, "" },  /* Green Card  */
+    { "01020304", "Brian (Student)", ROLE_STUDENT, false, false, "" },  /* Blue Card   */
+    { "C3D4E5F6", "Carol (Student)", ROLE_STUDENT, false, false, "" },  /* typed only  */
+    { "AABBCCDD", "Dan (Admin)",     ROLE_ADMIN,   false, false, "" },  /* Red Card    */
+    { "55667788", "Grace (Guest)",   ROLE_GUEST,   false, false, "" },  /* Yellow Card */
+    { "C0FFEE99", "Lost Card",       ROLE_STUDENT, true,  false, "" },  /* Key Fob     */
 };
 #define NUM_USERS ((int)(sizeof(users) / sizeof(users[0])))
 _Static_assert(NUM_USERS <= 32, "blocked flags are saved as a 32-bit mask");
@@ -152,7 +152,7 @@ void entrance_set_event_cb(entrance_event_cb_t cb)
 }
 
 static const char *const role_names[ROLE_COUNT]  = { "Student", "Staff", "Guest", "Admin" };
-static const char *const role_colors[ROLE_COUNT] = { "blue", "green", "yellow", "purple" };
+static const char *const role_colors[ROLE_COUNT] = { "blue", "green", "yellow", "red" };
 
 const char *entrance_role_name(entrance_role_t role)
 {
@@ -329,9 +329,7 @@ static esp_err_t hardware_init(void)
 {
     esp_err_t e = gpio_out_init(PIN_LED_GRANT);
     if (e == ESP_OK) e = gpio_out_init(PIN_LED_DENY);
-    if (e == ESP_OK) e = gpio_out_init(PIN_RGB_R);
-    if (e == ESP_OK) e = gpio_out_init(PIN_RGB_G);
-    if (e == ESP_OK) e = gpio_out_init(PIN_RGB_B);
+
     if (e != ESP_OK) return e;
 
     ledc_timer_config_t timer = {
@@ -388,18 +386,6 @@ static esp_err_t hardware_init(void)
     servo_set_angle(LEDC_CHANNEL_0, 0);
     servo_set_angle(LEDC_CHANNEL_1, 0);
     return ESP_OK;
-}
-
-/* RGB LED in the card colour: student blue, staff green, guest yellow (red +
- * green), admin purple (red + blue). on = false switches it off. */
-static void rgb_show(entrance_role_t role, bool on)
-{
-    bool r = on && (role == ROLE_GUEST || role == ROLE_ADMIN);
-    bool g = on && (role == ROLE_STAFF || role == ROLE_GUEST);
-    bool b = on && (role == ROLE_STUDENT || role == ROLE_ADMIN);
-    gpio_set_level(PIN_RGB_R, r);
-    gpio_set_level(PIN_RGB_G, g);
-    gpio_set_level(PIN_RGB_B, b);
 }
 
 /* buzzer: LEDC plays a 2 kHz square wave (50% duty) for 'ms' milliseconds.
@@ -527,13 +513,11 @@ static void actuator_task(void *arg)
         if (cmd.granted) {
             ledc_channel_t ch = (cmd.door == POINT_ENTRY) ? LEDC_CHANNEL_0 : LEDC_CHANNEL_1;
             gpio_set_level(PIN_LED_GRANT, 1);
-            rgb_show(cmd.role, true);                      /* card colour */
             servo_set_angle(ch, 90);                       /* open  */
             beep(120);                                     /* short "welcome" beep */
             vTaskDelay(pdMS_TO_TICKS(DOOR_OPEN_MS - 120));
             servo_set_angle(ch, 0);                        /* close */
             gpio_set_level(PIN_LED_GRANT, 0);
-            rgb_show(cmd.role, false);
         } else {
             gpio_set_level(PIN_LED_DENY, 1);
             beep(400);                                     /* two long beeps = denied */
@@ -561,7 +545,7 @@ static void print_help(void)
     for (int i = 0; i < ext_cmd_count; i++) {
         printf("  %s\n", ext_cmds[i].help);
     }
-    printf("Test UIDs: A1B2C3D4(staff) B2C3D4E5 C3D4E5F6(students) D4E5F6A7(admin) E5F6A7B8(guest) DEADBEEF(blocked)\n\n");
+    printf("Test UIDs: 11223344(staff, green) 01020304(student, blue) C3D4E5F6(student) AABBCCDD(admin, red) 55667788(guest, yellow) C0FFEE99(blocked fob)\n\n");
 }
 
 static void cmd_inside(void)

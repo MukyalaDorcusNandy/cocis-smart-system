@@ -7,7 +7,7 @@
  *
  * rfid_start() sets up SPI3 and starts the "rfid" task. The task polls both
  * readers every 150 ms; when a new card appears it calls
- * entrance_submit_scan(true/false, "A1B2C3D4"), the same path as typing
+ * entrance_submit_scan(true/false, "01020304"), the same path as typing
  * "in <UID>" / "out <UID>". If a reader is missing the task keeps running
  * and the typed commands still work.
  *

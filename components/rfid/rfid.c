@@ -1,9 +1,11 @@
 /*
  * rfid.c - two MFRC522 RFID readers (ENTRY and EXIT).
  *
- * Hardware: both readers share one SPI bus (SPI3_HOST: SCK 16, MOSI 17,
+ * Hardware: two Wokwi "board-mfrc522" parts. Both readers share one SPI bus (SPI3_HOST: SCK 16, MOSI 17,
  * MISO 35). Each reader has its own chip-select pin (SDA on the MFRC522):
- * GPIO 5 = ENTRY, GPIO 23 = EXIT. The ESP-IDF SPI driver gives each reader
+ * GPIO 5 = ENTRY, GPIO 23 = EXIT. RST is wired to 3.3 V (always running).
+ * In the simulator: click a reader, pick a card (Blue, Green, ...) and press
+ * Tap. The ESP-IDF SPI driver gives each reader
  * a "device handle" and only lets one transaction use the bus at a time,
  * so the two readers can never talk over each other (synchronisation).
  *
@@ -182,8 +184,10 @@ static bool mfrc_anticoll(reader_t *r, uint8_t uid[4])
     return true;
 }
 
-/* Reads a card's UID as 8 upper-case hex chars ("A1B2C3D4").
- * Returns false when there is no card. */
+/* Reads a card's UID as 8 upper-case hex chars ("01020304").
+ * Returns false when there is no card. A 7-byte tag (the grey NFC tag)
+ * answers 0x88 (cascade tag) + its first 3 bytes here; we keep those 4 bytes
+ * as its ID. It is not registered, so it is denied as an unknown tag. */
 static bool read_card(reader_t *r, char out[9])
 {
     uint8_t uid[4];
@@ -223,7 +227,9 @@ static void rfid_task(void *arg)
     for (int i = 0; i < 2; i++) {
         mfrc_init(&readers[i]);
         uint8_t v = reg_read(&readers[i], REG_VERSION);
-        readers[i].found = (v == 0x91 || v == 0x92);   /* MFRC522 v1.0 / v2.0 */
+        /* 0x91 / 0x92 = MFRC522 v1.0 / v2.0 (clones answer other values);
+         * 0x00 or 0xFF means nothing answered on the SPI bus */
+        readers[i].found = (v != 0x00 && v != 0xFF);
         if (readers[i].found) {
             printf("[RFID] %s reader v0x%02X OK\n", readers[i].name, v);
         } else {
