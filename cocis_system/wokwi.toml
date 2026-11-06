@@ -2,3 +2,8 @@
 version = 1
 firmware = 'build/flasher_args.json'
 elf = 'build/cocis_system.elf'
+
+# MFRC522 RFID reader (custom chip, source in chips/). diagram.json type "chip-mfrc522".
+[[chip]]
+name = 'mfrc522'
+binary = 'chips/mfrc522.chip.wasm'

@@ -10,6 +10,7 @@
 #include "room_control.h"
 #include "access_control.h"
 #include "hub.h"
+#include "rfid.h"
 
 void app_main(void)
 {
@@ -30,4 +31,8 @@ void app_main(void)
     ESP_ERROR_CHECK(room_control_start(1));
     ESP_ERROR_CHECK(room_control_start(2));
     ESP_ERROR_CHECK(entrance_start());
+
+    /* 5. the two MFRC522 RFID readers (ENTRY, EXIT); they send scans to the
+     *    entrance, so they start after it */
+    ESP_ERROR_CHECK(rfid_start());
 }

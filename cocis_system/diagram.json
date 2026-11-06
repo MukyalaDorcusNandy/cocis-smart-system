@@ -127,6 +127,24 @@
       "attrs": {
         "volume": "0.1"
       }
+    },
+    {
+      "type": "chip-mfrc522",
+      "id": "rfid_entry",
+      "top": -130,
+      "left": 700,
+      "attrs": {
+        "card": "0"
+      }
+    },
+    {
+      "type": "chip-mfrc522",
+      "id": "rfid_exit",
+      "top": 10,
+      "left": 700,
+      "attrs": {
+        "card": "0"
+      }
     }
   ],
   "connections": [
@@ -332,6 +350,78 @@
       "bz_door:1",
       "esp:GND.1",
       "black",
+      []
+    ],
+    [
+      "rfid_entry:VCC",
+      "esp:3V3",
+      "red",
+      []
+    ],
+    [
+      "rfid_entry:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "rfid_entry:SCK",
+      "esp:16",
+      "gray",
+      []
+    ],
+    [
+      "rfid_entry:MOSI",
+      "esp:17",
+      "blue",
+      []
+    ],
+    [
+      "rfid_entry:MISO",
+      "esp:35",
+      "green",
+      []
+    ],
+    [
+      "rfid_entry:SDA",
+      "esp:5",
+      "orange",
+      []
+    ],
+    [
+      "rfid_exit:VCC",
+      "esp:3V3",
+      "red",
+      []
+    ],
+    [
+      "rfid_exit:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "rfid_exit:SCK",
+      "esp:16",
+      "gray",
+      []
+    ],
+    [
+      "rfid_exit:MOSI",
+      "esp:17",
+      "blue",
+      []
+    ],
+    [
+      "rfid_exit:MISO",
+      "esp:35",
+      "green",
+      []
+    ],
+    [
+      "rfid_exit:SDA",
+      "esp:23",
+      "violet",
       []
     ]
   ],
