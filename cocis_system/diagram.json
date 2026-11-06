@@ -11,27 +11,37 @@
       "attrs": {}
     },
     {
+      "type": "wokwi-lcd1602",
+      "id": "lcd",
+      "top": 30,
+      "left": 330,
+      "attrs": {
+        "pins": "i2c",
+        "i2cAddress": "0x27"
+      }
+    },
+    {
       "type": "wokwi-pir-motion-sensor",
       "id": "pir1",
-      "top": -150,
-      "left": 200,
+      "top": -260,
+      "left": -470,
       "attrs": {}
     },
     {
       "type": "wokwi-led",
       "id": "led1",
-      "top": -150,
-      "left": 300,
+      "top": -250,
+      "left": -330,
       "attrs": {
         "color": "yellow",
-        "label": "Room1"
+        "label": "Room 1"
       }
     },
     {
       "type": "wokwi-resistor",
       "id": "r1",
-      "top": -100,
-      "left": 300,
+      "top": -160,
+      "left": -360,
       "attrs": {
         "value": "330"
       }
@@ -39,25 +49,25 @@
     {
       "type": "wokwi-pir-motion-sensor",
       "id": "pir2",
-      "top": 0,
-      "left": 200,
+      "top": -130,
+      "left": -470,
       "attrs": {}
     },
     {
       "type": "wokwi-led",
       "id": "led2",
-      "top": 0,
-      "left": 300,
+      "top": -120,
+      "left": -330,
       "attrs": {
         "color": "yellow",
-        "label": "Room2"
+        "label": "Room 2"
       }
     },
     {
       "type": "wokwi-resistor",
       "id": "r2",
-      "top": 50,
-      "left": 300,
+      "top": -30,
+      "left": -360,
       "attrs": {
         "value": "330"
       }
@@ -65,56 +75,72 @@
     {
       "type": "wokwi-microsd-card",
       "id": "sd1",
-      "top": 150,
-      "left": 200,
+      "top": 300,
+      "left": -150,
+      "attrs": {}
+    },
+    {
+      "type": "board-mfrc522",
+      "id": "rfid_entry",
+      "top": -420,
+      "left": 300,
       "attrs": {}
     },
     {
       "type": "wokwi-servo",
       "id": "servo_entry",
-      "top": -130,
-      "left": 530,
+      "top": -520,
+      "left": 560,
+      "attrs": {}
+    },
+    {
+      "type": "board-mfrc522",
+      "id": "rfid_exit",
+      "top": 260,
+      "left": 300,
       "attrs": {}
     },
     {
       "type": "wokwi-servo",
       "id": "servo_exit",
-      "top": 10,
-      "left": 530,
+      "top": 430,
+      "left": 560,
       "attrs": {}
     },
     {
       "type": "wokwi-led",
       "id": "led_grant",
-      "top": 170,
-      "left": 540,
+      "top": 420,
+      "left": -420,
       "attrs": {
-        "color": "green"
-      }
-    },
-    {
-      "type": "wokwi-led",
-      "id": "led_deny",
-      "top": 170,
-      "left": 600,
-      "attrs": {
-        "color": "red"
+        "color": "green",
+        "label": "Granted"
       }
     },
     {
       "type": "wokwi-resistor",
       "id": "r_grant",
-      "top": 250,
-      "left": 520,
+      "top": 520,
+      "left": -440,
       "attrs": {
         "value": "220"
       }
     },
     {
+      "type": "wokwi-led",
+      "id": "led_deny",
+      "top": 420,
+      "left": -320,
+      "attrs": {
+        "color": "red",
+        "label": "Denied"
+      }
+    },
+    {
       "type": "wokwi-resistor",
       "id": "r_deny",
-      "top": 290,
-      "left": 520,
+      "top": 560,
+      "left": -340,
       "attrs": {
         "value": "220"
       }
@@ -122,10 +148,10 @@
     {
       "type": "wokwi-buzzer",
       "id": "bz_door",
-      "top": 100,
-      "left": 660,
+      "top": 420,
+      "left": -200,
       "attrs": {
-        "volume": "0.1"
+        "volume": "1"
       }
     }
   ],
@@ -140,6 +166,30 @@
       "esp:RX",
       "$serialMonitor:TX",
       "",
+      []
+    ],
+    [
+      "lcd:VCC",
+      "esp:5V",
+      "red",
+      []
+    ],
+    [
+      "lcd:GND",
+      "esp:GND.2",
+      "black",
+      []
+    ],
+    [
+      "lcd:SDA",
+      "esp:15",
+      "green",
+      []
+    ],
+    [
+      "lcd:SCL",
+      "esp:2",
+      "blue",
       []
     ],
     [
@@ -161,13 +211,13 @@
       []
     ],
     [
+      "r1:2",
       "esp:21",
-      "r1:1",
       "yellow",
       []
     ],
     [
-      "r1:2",
+      "r1:1",
       "led1:A",
       "yellow",
       []
@@ -197,13 +247,13 @@
       []
     ],
     [
+      "r2:2",
       "esp:22",
-      "r2:1",
       "yellow",
       []
     ],
     [
-      "r2:2",
+      "r2:1",
       "led2:A",
       "yellow",
       []
@@ -251,44 +301,128 @@
       []
     ],
     [
-      "esp:18",
+      "rfid_entry:3.3V",
+      "esp:3V3",
+      "red",
+      []
+    ],
+    [
+      "rfid_entry:GND",
+      "esp:GND.3",
+      "black",
+      []
+    ],
+    [
+      "rfid_entry:RST",
+      "esp:3V3",
+      "red",
+      []
+    ],
+    [
+      "rfid_entry:SCK",
+      "esp:16",
+      "gray",
+      []
+    ],
+    [
+      "rfid_entry:MOSI",
+      "esp:17",
+      "blue",
+      []
+    ],
+    [
+      "rfid_entry:MISO",
+      "esp:35",
+      "green",
+      []
+    ],
+    [
+      "rfid_entry:SDA",
+      "esp:5",
+      "orange",
+      []
+    ],
+    [
+      "rfid_exit:3.3V",
+      "esp:3V3",
+      "red",
+      []
+    ],
+    [
+      "rfid_exit:GND",
+      "esp:GND.3",
+      "black",
+      []
+    ],
+    [
+      "rfid_exit:RST",
+      "esp:3V3",
+      "red",
+      []
+    ],
+    [
+      "rfid_exit:SCK",
+      "esp:16",
+      "gray",
+      []
+    ],
+    [
+      "rfid_exit:MOSI",
+      "esp:17",
+      "blue",
+      []
+    ],
+    [
+      "rfid_exit:MISO",
+      "esp:VP",
+      "green",
+      []
+    ],
+    [
+      "rfid_exit:SDA",
+      "esp:23",
+      "violet",
+      []
+    ],
+    [
       "servo_entry:PWM",
+      "esp:18",
       "orange",
       []
     ],
     [
-      "esp:5V",
       "servo_entry:V+",
+      "esp:5V",
       "red",
       []
     ],
     [
-      "esp:GND.1",
       "servo_entry:GND",
+      "esp:GND.3",
       "black",
       []
     ],
     [
-      "esp:19",
       "servo_exit:PWM",
+      "esp:19",
       "orange",
       []
     ],
     [
-      "esp:5V",
       "servo_exit:V+",
+      "esp:5V",
       "red",
       []
     ],
     [
-      "esp:GND.1",
       "servo_exit:GND",
+      "esp:GND.3",
       "black",
       []
     ],
     [
-      "esp:25",
       "r_grant:1",
+      "esp:25",
       "green",
       []
     ],
@@ -300,13 +434,13 @@
     ],
     [
       "led_grant:C",
-      "esp:GND.1",
+      "esp:GND.3",
       "black",
       []
     ],
     [
-      "esp:26",
       "r_deny:1",
+      "esp:26",
       "red",
       []
     ],
@@ -318,19 +452,19 @@
     ],
     [
       "led_deny:C",
-      "esp:GND.1",
+      "esp:GND.3",
       "black",
       []
     ],
     [
-      "esp:27",
       "bz_door:2",
+      "esp:27",
       "purple",
       []
     ],
     [
       "bz_door:1",
-      "esp:GND.1",
+      "esp:GND.3",
       "black",
       []
     ]

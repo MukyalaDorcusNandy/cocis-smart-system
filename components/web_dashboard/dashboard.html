@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CoCIS Security Dashboard</title>
+<!-- Everything is inline (no CDN): the page must work without internet. -->
+<style>
+  :root {
+    /* light theme */
+    --bg: #f4f6fa; --panel: #ffffff; --panel2: #f1f4f9; --line: #dde3ec;
+    --text: #1f2937; --muted: #6b7280;
+    --blue: #2563eb; --green: #16a34a; --yellow: #eab308; --purple: #9333ea;
+    --red: #dc2626; --grey: #9ca3af;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .08em;
+       color: var(--muted); margin: 0 0 12px; }
+  button { font: inherit; cursor: pointer; border: 0; border-radius: 8px;
+           padding: 8px 14px; background: var(--panel2); color: var(--text);
+           border: 1px solid var(--line); }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  button.danger { background: var(--red); border-color: var(--red); color: #fff; }
+  input, select { font: inherit; background: var(--bg); color: var(--text);
+                  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .hidden { display: none !important; }
+
+  /* ---- sign-in screen ---- */
+  #login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 10px 30px rgba(15,23,42,.08);
+          padding: 28px; width: 100%; max-width: 380px; text-align: center; }
+  .card .logo { font-size: 40px; }
+  .card p { color: var(--muted); margin: 6px 0 20px; }
+  .card input { width: 100%; text-align: center; font-size: 22px; letter-spacing: .4em; }
+  .card button { width: 100%; margin-top: 12px; padding: 12px; }
+  #loginMsg { color: var(--red); min-height: 22px; margin-top: 12px; }
+
+  /* ---- dashboard ---- */
+  header { position: sticky; top: 0; z-index: 5; background: rgba(255,255,255,.92);
+           backdrop-filter: blur(6px); border-bottom: 1px solid var(--line);
+           padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  header .grow { flex: 1; min-width: 200px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .clock { font: 600 22px ui-monospace, Menlo, Consolas, monospace; }
+  .badge { padding: 4px 10px; border-radius: 999px; font-weight: 600; font-size: 13px;
+           border: 1px solid var(--line); }
+  .b-open { background: rgba(34,197,94,.15); color: var(--green); border-color: var(--green); }
+  .b-closed { background: rgba(239,68,68,.15); color: var(--red); border-color: var(--red); }
+  .b-emerg { background: var(--red); color: #fff; border-color: var(--red); animation: blink 1s infinite; }
+  .b-calm { color: var(--muted); }
+  @keyframes blink { 50% { opacity: .45; } }
+
+  main { padding: 16px; display: grid; gap: 16px; max-width: 1300px; margin: 0 auto;
+         grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0;
+            box-shadow: 0 1px 3px rgba(15,23,42,.06); }
+  .wide { grid-column: 1 / -1; }
+
+  .big { font-size: 44px; font-weight: 700; line-height: 1; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+                 border-radius: 999px; background: var(--panel2); font-size: 13px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+
+  /* role colours: the whole idea is "tell who is inside by card colour" */
+  .c-blue { --c: var(--blue); } .c-green { --c: var(--green); }
+  .c-yellow { --c: var(--yellow); } .c-purple { --c: var(--purple); }
+  .c-red { --c: var(--red); }
+  .dot, .chip { background: var(--c, var(--grey)); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip { color: #fff; border-radius: 12px; padding: 10px 14px; min-width: 150px;
+          box-shadow: 0 6px 16px -8px var(--c); }
+  .chip.c-yellow { color: #1f2937; }   /* dark text reads better on yellow */
+  .chip b { display: block; font-size: 15px; }
+  .chip small { opacity: .8; }
+  .empty { color: var(--muted); font-style: italic; }
+
+  .out { list-style: none; margin: 0; padding: 0; }
+  .out li { display: flex; align-items: center; gap: 8px; padding: 6px 0;
+            border-bottom: 1px solid var(--line); color: var(--muted); }
+  .out li:last-child { border-bottom: 0; }
+  .tag { font-size: 11px; padding: 2px 6px; border-radius: 6px; background: var(--red); color: #fff; }
+
+  .rooms { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .room { background: var(--panel2); border-radius: 12px; padding: 12px; border: 1px solid var(--line); }
+  .room.offline { border-color: var(--red); opacity: .75; }
+  .room .bulb { font-size: 26px; filter: grayscale(1) opacity(.45); }
+  .room .bulb.on { filter: none; text-shadow: 0 0 14px #facc15; }
+  .room div { font-size: 13px; color: var(--muted); }
+
+  .feed { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; }
+  .feed li { display: grid; grid-template-columns: 70px 1fr; gap: 8px; padding: 8px 10px;
+             border-left: 4px solid var(--c, var(--grey)); background: var(--panel2);
+             border-radius: 8px; margin-bottom: 6px; }
+  .feed li.denied { --c: var(--red); background: #fef2f2; }
+  .feed .t { font-family: ui-monospace, monospace; color: var(--muted); font-size: 13px; }
+  .feed .what { font-weight: 600; }
+  .feed .why { color: var(--muted); font-size: 13px; }
+
+  .admin label { display: block; color: var(--muted); font-size: 13px; margin: 10px 0 4px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .users { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+  .users td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  .users td:last-child { text-align: right; }
+
+  /* toasts: pop up for every new alert */
+  #toasts { position: fixed; right: 16px; bottom: 16px; z-index: 10; display: flex;
+            flex-direction: column; gap: 8px; max-width: calc(100vw - 32px); }
+  .toast { background: var(--panel2); border-left: 6px solid var(--c, var(--grey));
+           border-radius: 10px; padding: 10px 14px; width: 320px; max-width: 100%;
+           box-shadow: 0 10px 30px rgba(15,23,42,.18); animation: slide .25s ease-out; }
+  .toast.alarm { background: #fee2e2; border-color: var(--red); animation: slide .25s ease-out, shake .4s .25s; }
+  .toast .h { font-weight: 700; }
+  @keyframes slide { from { transform: translateX(120%); opacity: 0; } }
+  @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+  #offline { background: var(--red); color: #fff; text-align: center; padding: 6px; }
+</style>
+</head>
+<body>
+
+<!-- ============ 1. SIGN-IN SCREEN ============ -->
+<div id="login">
+  <form class="card" id="loginForm">
+    <div class="logo">&#128737;</div>
+    <h1>CoCIS Smart Building</h1>
+    <p>Security Dashboard &mdash; admin sign-in</p>
+    <input id="pin" type="password" inputmode="numeric" maxlength="8" placeholder="PIN" autocomplete="off" autofocus>
+    <button class="primary" type="submit">Sign in</button>
+    <div id="loginMsg"></div>
+  </form>
+</div>
+
+<!-- ============ 2. DASHBOARD ============ -->
+<div id="dash" class="hidden">
+  <div id="offline" class="hidden">Connection to the building lost &mdash; retrying&hellip;</div>
+  <header>
+    <div class="grow">
+      <h1>CoCIS Smart Building</h1>
+      <div class="sub">Security Dashboard &middot; hours <span id="hours">--</span></div>
+    </div>
+    <span class="clock" id="clock">--:--:--</span>
+    <span class="badge" id="openBadge">--</span>
+    <span class="badge" id="emergBadge">--</span>
+    <button id="logoutBtn">Sign out</button>
+  </header>
+
+  <main>
+    <section>
+      <h2>People inside</h2>
+      <div class="big" id="count">0</div>
+      <div class="legend" id="legend"></div>
+    </section>
+
+    <section>
+      <h2>Lecture rooms</h2>
+      <div class="rooms" id="rooms"></div>
+    </section>
+
+    <section class="wide">
+      <h2>Who is inside</h2>
+      <div class="chips" id="inside"></div>
+    </section>
+
+    <section>
+      <h2>Live alerts</h2>
+      <ul class="feed" id="feed"></ul>
+    </section>
+
+    <section>
+      <h2>Who is out</h2>
+      <ul class="out" id="outside"></ul>
+    </section>
+
+    <section class="admin">
+      <h2>Admin</h2>
+      <label>Opening hours</label>
+      <div class="row">
+        <input type="time" id="openIn"> to <input type="time" id="closeIn">
+        <button class="primary" id="hoursBtn">Save</button>
+      </div>
+      <label>Emergency mode (exit allowed at any time)</label>
+      <div class="row">
+        <button class="danger" id="emergOn">Emergency ON</button>
+        <button id="emergOff">Emergency off</button>
+      </div>
+      <label>Test scan (same as "in/out &lt;UID&gt;" on the console)</label>
+      <div class="row">
+        <input id="scanUid" placeholder="UID, e.g. 01020304" size="14">
+        <button id="scanIn">Scan IN</button>
+        <button id="scanOut">Scan OUT</button>
+      </div>
+      <label>Cards</label>
+      <table class="users" id="users"></table>
+    </section>
+  </main>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+/* ---------- state kept by the page ---------- */
+let token = sessionStorage.getItem('token') || '';  // from /api/login
+let lastAlertId = -1;                               // newest alert already shown
+let timer = null;
+
+const $ = id => document.getElementById(id);
+// Escape text before putting it into HTML (names/UIDs come from the device).
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------- talking to the ESP32 ---------- */
+// Every protected call sends the token in the X-Token header.
+// A 401 answer means the session is over -> back to the sign-in screen.
+async function api(path, body) {
+  const opt = { headers: { 'X-Token': token } };
+  if (body !== undefined) {
+    opt.method = 'POST';
+    opt.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    opt.body = body;
+  }
+  const r = await fetch(path, opt);
+  if (r.status === 401) { showLogin('Session ended, please sign in again'); throw new Error('401'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { toast({ h: 'Error', m: j.error || r.status, alarm: true }); throw new Error(r.status); }
+  return j;
+}
+
+/* ---------- sign-in / sign-out ---------- */
+$('loginForm').onsubmit = async e => {
+  e.preventDefault();
+  unlockAudio();
+  $('loginMsg').textContent = '';
+  try {
+    const r = await fetch('/api/login', { method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'pin=' + encodeURIComponent($('pin').value) });
+    const j = await r.json();
+    if (j.ok) { token = j.token; sessionStorage.setItem('token', token); showDash(); }
+    else $('loginMsg').textContent = j.error || 'Sign-in failed';  // wrong PIN / locked
+  } catch (err) { $('loginMsg').textContent = 'Cannot reach the ESP32'; }
+  $('pin').value = '';
+};
+
+$('logoutBtn').onclick = async () => {
+  try { await api('/api/logout', ''); } catch (e) {}
+  showLogin('Signed out');
+};
+
+function showLogin(msg) {
+  token = ''; sessionStorage.removeItem('token');
+  clearInterval(timer); timer = null;
+  $('dash').classList.add('hidden'); $('login').classList.remove('hidden');
+  $('loginMsg').textContent = msg || '';
+}
+
+function showDash() {
+  $('login').classList.add('hidden'); $('dash').classList.remove('hidden');
+  lastAlertId = -1;               // first poll: show history without toasts
+  refresh();
+  timer = setInterval(refresh, 1500);   // poll every 1.5 s
+}
+
+/* ---------- drawing the dashboard ---------- */
+async function refresh() {
+  let s;
+  try { s = await api('/api/state'); $('offline').classList.add('hidden'); }
+  catch (e) { if (token) $('offline').classList.remove('hidden'); return; }
+
+  $('clock').textContent = s.time;
+  $('hours').textContent = s.open + ' - ' + s.close;
+  const ob = $('openBadge');
+  ob.textContent = s.is_open ? 'OPEN' : 'CLOSED';
+  ob.className = 'badge ' + (s.is_open ? 'b-open' : 'b-closed');
+  const eb = $('emergBadge');
+  eb.textContent = s.emergency ? 'EMERGENCY' : 'No emergency';
+  eb.className = 'badge ' + (s.emergency ? 'b-emerg' : 'b-calm');
+  $('count').textContent = s.inside_count;
+
+  // colour legend with how many of each role are inside
+  $('legend').innerHTML = s.roles.map(r =>
+    `<span class="c-${r.color}"><i class="dot"></i>${r.role} (${r.color}) &middot; ${r.inside}</span>`).join('');
+
+  // who is inside: one coloured chip per person
+  const ins = s.users.filter(u => u.inside);
+  $('inside').innerHTML = ins.length ? ins.map(u =>
+    `<div class="chip c-${u.color}"><b>${esc(u.name)}</b><small>${u.role} &middot; since ${u.since}</small></div>`).join('')
+    : '<span class="empty">Nobody is inside</span>';
+
+  // who is out (greyed)
+  $('outside').innerHTML = s.users.filter(u => !u.inside).map(u =>
+    `<li><i class="dot c-${u.color}"></i>${esc(u.name)} <small>${u.role}</small>${u.blocked ? ' <span class="tag">BLOCKED</span>' : ''}</li>`).join('')
+    || '<li class="empty">Everybody is inside</li>';
+
+  // rooms
+  $('rooms').innerHTML = s.rooms.length ? s.rooms.map(r =>
+    `<div class="room ${r.online ? '' : 'offline'}">
+       <span class="bulb ${r.light ? 'on' : ''}">&#128161;</span> <b>Room ${r.room}</b>
+       <div>${r.online ? '&#9679; online' : '&#9888; OFFLINE'}</div>
+       <div>${r.occupied ? 'Occupied' : 'Empty'} &middot; light ${r.light ? 'ON' : 'off'}</div>
+       <div>light-on time ${fmtSecs(r.light_on_s)}</div></div>`).join('')
+    : '<span class="empty">No room data</span>';
+
+  // alert feed (newest first)
+  $('feed').innerHTML = s.alerts.length ? s.alerts.map(a =>
+    `<li class="c-${a.color} ${a.granted ? '' : 'denied'}"><span class="t">${a.time}</span>
+       <span><span class="what">${alertTitle(a)}</span><br>
+       <span class="why">${esc(a.name)} &middot; ${esc(a.uid)} &middot; ${a.role} &middot; ${esc(a.reason)}</span></span></li>`).join('')
+    : '<li class="empty">No scans yet</li>';
+
+  // admin: card table with block / unblock buttons
+  $('users').innerHTML = s.users.map(u =>
+    `<tr><td><i class="dot c-${u.color}"></i> ${esc(u.name)}<br><small>${esc(u.uid)}</small></td>
+     <td><button data-uid="${esc(u.uid)}" data-b="${u.blocked ? 0 : 1}" class="${u.blocked ? '' : 'danger'}">
+       ${u.blocked ? 'Unblock' : 'Block'}</button></td></tr>`).join('');
+  if (!document.activeElement || !document.activeElement.matches('input[type=time]')) {
+    $('openIn').value = s.open; $('closeIn').value = s.close;
+  }
+
+  // new alerts -> toast + beep (not on the first poll, that is just history)
+  const newest = s.alerts.length ? s.alerts[0].id : 0;
+  if (lastAlertId >= 0) {
+    s.alerts.filter(a => a.id > lastAlertId).reverse().forEach(a => {
+      const alarm = !a.granted;
+      toast({ h: alarm ? 'SECURITY ALERT: ' + alertTitle(a) : alertTitle(a),
+              m: a.name + ' (' + a.role + ') - ' + a.reason, color: a.color, alarm });
+      beep(alarm);
+    });
+  }
+  lastAlertId = newest;
+}
+
+function alertTitle(a) {
+  if (!a.granted) {
+    if (!a.known) return 'DENIED - unknown card';
+    if (a.reason.indexOf('blocked') >= 0) return 'DENIED - blocked card';
+    if (a.reason.indexOf('hours') >= 0) return 'DENIED - after hours';
+    return 'DENIED ' + (a.entry ? 'entry' : 'exit');
+  }
+  return a.entry ? 'Entry' : 'Exit';
+}
+
+function fmtSecs(s) {
+  const m = Math.floor(s / 60);
+  return m ? m + ' min ' + (s % 60) + ' s' : s + ' s';
+}
+
+/* ---------- toast + beep ---------- */
+function toast(t) {
+  const d = document.createElement('div');
+  d.className = 'toast ' + (t.color ? 'c-' + t.color : '') + (t.alarm ? ' alarm' : '');
+  d.innerHTML = `<div class="h">${esc(t.h)}</div><div>${esc(t.m)}</div>`;
+  $('toasts').prepend(d);
+  setTimeout(() => d.remove(), t.alarm ? 8000 : 4000);
+  while ($('toasts').children.length > 5) $('toasts').lastChild.remove();
+}
+
+// WebAudio needs a user click first, so it is created on the sign-in click.
+let audio = null;
+function unlockAudio() {
+  try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch (e) {}
+}
+function beep(alarm) {
+  if (!audio) return;
+  const tones = alarm ? [880, 440, 880] : [660];   // alarm = three harsh tones
+  tones.forEach((f, i) => {
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = alarm ? 'square' : 'sine';
+    o.frequency.value = f;
+    g.gain.value = 0.08;
+    o.connect(g); g.connect(audio.destination);
+    const t0 = audio.currentTime + i * 0.18;
+    o.start(t0); o.stop(t0 + 0.15);
+  });
+}
+
+/* ---------- admin buttons ---------- */
+$('hoursBtn').onclick = () =>
+  api('/api/hours', 'open=' + $('openIn').value + '&close=' + $('closeIn').value)
+    .then(() => toast({ h: 'Saved', m: 'Opening hours updated', color: 'green' })).catch(() => {});
+$('emergOn').onclick = () => api('/api/emergency', 'on=1').then(refresh).catch(() => {});
+$('emergOff').onclick = () => api('/api/emergency', 'on=0').then(refresh).catch(() => {});
+$('users').onclick = e => {
+  const b = e.target.closest('button');
+  if (b) api('/api/block', 'uid=' + encodeURIComponent(b.dataset.uid) + '&blocked=' + b.dataset.b)
+           .then(refresh).catch(() => {});
+};
+function scan(entry) {
+  const uid = $('scanUid').value.trim().toUpperCase();
+  if (uid) api('/api/scan', 'uid=' + encodeURIComponent(uid) + '&entry=' + entry)
+             .then(() => setTimeout(refresh, 300)).catch(() => {});
+}
+$('scanIn').onclick = () => scan(1);
+$('scanOut').onclick = () => scan(0);
+
+/* ---------- start ---------- */
+if (token) showDash();   // page reload keeps the session (sessionStorage)
+</script>
+</body>
+</html>
