@@ -18,13 +18,21 @@ git checkout feature/rfid-dashboard
 git pull
 ```
 
-**2. Build.** Open an ESP-IDF terminal (VS Code: F1 → **ESP-IDF: Open ESP-IDF Terminal**), then:
+**2. Build.** `idf.py` only works in a terminal where ESP-IDF is loaded. If you see `idf.py: command not found`, load it first:
+
+- **VS Code:** F1 → **ESP-IDF: Open ESP-IDF Terminal**.
+- **Linux / macOS terminal:** `. ~/.espressif/tools/activate_idf_v6.0.1.sh` (or `. <your esp-idf folder>/export.sh`).
+- **Windows:** open the **ESP-IDF PowerShell** shortcut.
+
+Then, from the repository folder:
 
 ```sh
 cd cocis_system
-rm -f sdkconfig      # first time only, so sdkconfig.defaults are used (Windows: del sdkconfig)
+rm -f sdkconfig
 idf.py build
 ```
+
+`rm -f sdkconfig` is needed only the first time, so the settings in `sdkconfig.defaults` are used (Windows: `del sdkconfig`).
 
 It must finish with no errors.
 
