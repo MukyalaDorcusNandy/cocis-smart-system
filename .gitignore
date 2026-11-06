@@ -23,3 +23,6 @@ dependencies.lock
 Thumbs.db
 # Local tool files
 .claude/
+
+# Raw screenshots (cropped copies used by the report are in docs/images/)
+/images/
