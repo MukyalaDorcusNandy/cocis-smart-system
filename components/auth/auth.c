@@ -130,15 +130,18 @@ int auth_lockout_remaining_s(void)
 }
 
 /**
- * Checks the PIN against the stored hash.
+ * Checks the PIN against the stored hash (shared by the console and the web).
  * Refused while locked. After AUTH_MAX_TRIES wrong PINs login is locked
- * for AUTH_LOCKOUT_S seconds.
+ * for AUTH_LOCKOUT_S seconds. Both callers share ONE failure counter, so an
+ * attacker cannot get extra guesses by switching between console and web.
+ * 'who' is "login" (console) or "web login"; only the console opens the
+ * console session (open_session = true).
  */
-bool auth_login(const char *pin)
+static bool check_pin(const char *pin, const char *who, bool open_session)
 {
     if (pin == NULL) return false;
     if (auth_lockout_remaining_s() > 0) {
-        schedule_log("AUTH,login refused (locked)");
+        schedule_log("AUTH,%s refused (locked)", who);
         return false;
     }
 
@@ -148,9 +151,11 @@ bool auth_login(const char *pin)
     bool ok = pin_format_ok(pin) && hash_equal(h, s_rec.hash);
     bool locked_now = false;
     if (ok) {
-        s_logged_in = true;
         s_failures = 0;
-        s_last_activity_us = now_us();
+        if (open_session) {
+            s_logged_in = true;
+            s_last_activity_us = now_us();
+        }
     } else if (++s_failures >= AUTH_MAX_TRIES) {
         s_failures = 0;
         s_locked_until_us = now_us() + (int64_t)AUTH_LOCKOUT_S * 1000000;
@@ -159,13 +164,23 @@ bool auth_login(const char *pin)
     xSemaphoreGive(s_lock);
 
     if (ok) {
-        schedule_log("AUTH,login OK");
+        schedule_log("AUTH,%s OK", who);
     } else if (locked_now) {
-        schedule_log("AUTH,login failed,locked for %d s", AUTH_LOCKOUT_S);
+        schedule_log("AUTH,%s failed,locked for %d s", who, AUTH_LOCKOUT_S);
     } else {
-        schedule_log("AUTH,login failed");
+        schedule_log("AUTH,%s failed", who);
     }
     return ok;
+}
+
+bool auth_login(const char *pin)
+{
+    return check_pin(pin, "login", true);
+}
+
+bool auth_check_pin(const char *pin)
+{
+    return check_pin(pin, "web login", false);
 }
 
 /**
