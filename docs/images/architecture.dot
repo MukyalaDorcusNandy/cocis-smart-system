@@ -1,0 +1,55 @@
+// Tasks and queues of the CoCIS firmware (one ESP32).
+// Render: dot -Tpng -Gdpi=200 docs/images/architecture.dot -o docs/images/00-architecture.png
+digraph cocis {
+    rankdir=LR;
+    bgcolor="white";
+    fontname="Helvetica";
+    node  [fontname="Helvetica", fontsize=11, style="filled,rounded", shape=box,
+           color="#475569", fillcolor="#f8fafc", penwidth=1.2];
+    edge  [fontname="Helvetica", fontsize=9, color="#475569", fontcolor="#334155"];
+    label=<<b>CoCIS Smart System: FreeRTOS tasks and queues (one ESP32)</b><br/><font point-size="9">boxes = tasks, cylinders = queues / buffers; every task logs through schedule_log() to the SD card; the dashboard test scan also uses entrance_submit_scan()</font>>;
+    labelloc=t; fontsize=14;
+
+    subgraph cluster_entrance {
+        label=<<b>Entrance</b>>; style="rounded,filled"; fillcolor="#eff6ff"; color="#3b82f6";
+        RF   [label=<<b>rfid task</b><br/>2 x MFRC522 readers>, fillcolor="#dbeafe"];
+        CON  [label=<<b>console task</b><br/>serial menu, typed in/out>, fillcolor="#dbeafe"];
+        SQ   [label="scan_queue", shape=cylinder, fillcolor="#fde68a", color="#b45309"];
+        ACC  [label=<<b>access task</b><br/>grant / deny>, fillcolor="#bfdbfe"];
+        AQ   [label="actuator_queue", shape=cylinder, fillcolor="#fde68a", color="#b45309"];
+        ACT  [label=<<b>actuator task</b><br/>door servos, LEDs, buzzer>, fillcolor="#dbeafe"];
+        RF  -> SQ [label="entrance_submit_scan()"];
+        CON -> SQ [label="entrance_submit_scan()"];
+        SQ  -> ACC;
+        ACC -> AQ -> ACT;
+    }
+
+    subgraph cluster_rooms {
+        label=<<b>Lecture rooms</b>>; style="rounded,filled"; fillcolor="#f0fdf4"; color="#16a34a";
+        R1 [label=<<b>room1 task</b><br/>PIR + light>, fillcolor="#dcfce7"];
+        R2 [label=<<b>room2 task</b><br/>PIR + light>, fillcolor="#dcfce7"];
+    }
+
+    subgraph cluster_hub {
+        label=<<b>Integration</b>>; style="rounded,filled"; fillcolor="#faf5ff"; color="#9333ea";
+        HQ  [label="hub queue", shape=cylinder, fillcolor="#fde68a", color="#b45309"];
+        HUB [label=<<b>hub task</b><br/>room table, offline detection>, fillcolor="#f3e8ff"];
+        HQ -> HUB;
+    }
+
+    subgraph cluster_outputs {
+        label=<<b>Displays</b>>; style="rounded,filled"; fillcolor="#fff7ed"; color="#ea580c";
+        LQ  [label="lcd_queue", shape=cylinder, fillcolor="#fde68a", color="#b45309"];
+        LCD [label=<<b>lcd task</b><br/>16x2 I2C LCD>, fillcolor="#ffedd5"];
+        AR  [label="alert ring\n(mutex)", shape=cylinder, fillcolor="#fde68a", color="#b45309"];
+        WEB [label=<<b>httpd</b><br/>Wi-Fi Security Dashboard>, fillcolor="#ffedd5"];
+        LQ -> LCD;
+        AR -> WEB;
+    }
+
+    ACC -> HQ [label="event"];
+    R1  -> HQ [label="status + heartbeat"];
+    R2  -> HQ [label="status + heartbeat"];
+    ACC -> LQ [label="event"];
+    ACC -> AR [label="event"];
+}

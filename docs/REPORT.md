@@ -43,28 +43,9 @@ The firmware is split into ten ESP-IDF components, each owned by one or two memb
 
 The brief describes three terminals: the entrance, room 1 and room 2. Here each terminal is a group of FreeRTOS tasks on the same ESP32, with its own pins, its own data and its own mutex, so it behaves like a separate unit.
 
-**Figure 1. Tasks and queues** (arrows are queues or listener calls; every task logs through `schedule_log` to the SD card)
+![Figure 1. FreeRTOS tasks and queues](images/00-architecture.png)
 
-```mermaid
-flowchart LR
-    subgraph Entrance
-        RF[rfid task<br/>2 x MFRC522] -->|entrance_submit_scan| SQ[(scan_queue)]
-        CON[console task<br/>typed in/out] -->|entrance_submit_scan| SQ
-        SQ --> ACC[access task<br/>grant / deny]
-        ACC --> AQ[(actuator_queue)] --> ACT[actuator task<br/>servos, LEDs, buzzer]
-    end
-    subgraph Rooms
-        R1[room1 task<br/>PIR + light]
-        R2[room2 task<br/>PIR + light]
-    end
-    ACC -->|event| HQ[(hub queue)]
-    R1 -->|status + heartbeat| HQ
-    R2 -->|status + heartbeat| HQ
-    HQ --> HUB[hub task<br/>offline detection]
-    ACC -->|event| LQ[(lcd_queue)] --> LCD[lcd task<br/>16x2 LCD]
-    ACC -->|event| AR[(alert ring)] --> WEB[httpd<br/>Security Dashboard]
-    WEB -->|test scan| SQ
-```
+*Figure 1. FreeRTOS tasks and queues on the one ESP32. Boxes are tasks, cylinders are queues or buffers. Card scans from the readers and the console go through `entrance_submit_scan()` into `scan_queue`; the access task decides and sends every decision to the actuator, the hub, the LCD and the dashboard. The two room tasks report to the hub with a heartbeat. (Source: `docs/images/architecture.dot`.)*
 
 ### 1.2 Communication between the three terminals
 
