@@ -55,6 +55,8 @@ Tapping the same card on ENTRY again gives DENIED `Already inside`. Tap it on EX
 
 **6. Backup: typed scans.** Click inside the Wokwi terminal and type `in <UID>` or `out <UID>`, for example `in 01020304` (Brian). `help` lists all commands.
 
+**Full demo, step by step:** [docs/DEMO.md](docs/DEMO.md) (what to click, what you should see, what to say, quick fixes).
+
 **7. Who presents what.** Your script is in [docs/VIDEO_GUIDE.md](docs/VIDEO_GUIDE.md) under your name.
 
 | Member | New part to present | Files to show |
@@ -69,7 +71,7 @@ Tapping the same card on ENTRY again gives DENIED `Already inside`. Tap it on EX
 
 **Troubleshooting**
 
-- `[RFID] ... reader NOT FOUND`: use the typed `in <UID>` / `out <UID>` commands instead.
+- A tap does nothing: pick the card first, then press **Tap**. Type `rfid` to see each reader's status. If a reader is `NOT FOUND`, use the typed `in <UID>` / `out <UID>` commands instead.
 - No text on the LCD, or `[LCD] no LCD at 0x27, running without it`: check that the LCD is in I2C mode (`"pins": "i2c"` in `diagram.json`).
 - Dashboard not loading: wait for the `[WIFI] connected, IP ...` line, then reload the page.
 

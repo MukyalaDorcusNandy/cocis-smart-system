@@ -15,7 +15,7 @@ cocis-smart-system/
 │   │   └── include/
 │   │       └── access_control.h
 │   │
-│   ├── rfid/                    Two MFRC522 readers (ENTRY, EXIT) on SPI3
+│   ├── rfid/                    Two MFRC522 readers (ENTRY, EXIT), software SPI
 │   │   ├── rfid.c               MFRC522 driver (WUPA, anticollision, BCC) + rfid task
 │   │   └── include/rfid.h       rfid_start()
 │   │
@@ -66,7 +66,7 @@ Generated `build/`, `sdkconfig` and `sdkconfig.old` files are not committed.
 | Component | Purpose | Main functions |
 |---|---|---|
 | `access_control` | Entrance: ENTRY and EXIT scan points, grant/deny, door servos, LEDs, buzzer, who is inside (role, since-time). Owns the serial console; other components add commands to it. | `entrance_start()`, `entrance_submit_scan()`, `entrance_register_command()`, `entrance_set_event_cb()` (up to 4 listeners), `entrance_get_users()`, `entrance_inside_count()`, `entrance_set_emergency()`, `entrance_get_emergency()`, `entrance_set_blocked()`, `entrance_role_name()`, `entrance_role_color()` |
-| `rfid` | Two MFRC522 readers (Wokwi `board-mfrc522`) on one SPI bus. The `rfid` task polls both every 150 ms and sends each new card to the entrance | `rfid_start()` |
+| `rfid` | Two MFRC522 readers (Wokwi `board-mfrc522`) driven by software SPI (shared SCK/MOSI, own CS and own MISO per reader). The `rfid` task polls both about every 50 ms and sends each new card to the entrance; the `rfid` command shows reader status | `rfid_register_commands()`, `rfid_start()` |
 | `lcd_display` | 16x2 I2C LCD at the entrance. An entrance event listener copies each decision into a queue; the `lcd` task shows it for 3 s, otherwise the clock, people inside and OPEN/CLOSED. Runs without the LCD if none answers | `lcd_display_start()` |
 | `web_dashboard` | Wi-Fi station, HTTP server on port 80, PIN sign-in with a token, JSON API, alert ring, `wifi` command | `web_dashboard_set_room_provider()`, `web_dashboard_register_commands()`, `web_dashboard_start()`, `wifi_net_start()` |
 | `room_control` | One task per room: polls the PIR every 100 ms, light follows occupancy with a 10 s vacancy delay, counts light-on seconds, reports on change and every 5 s | `room_control_start(1/2)`, `room_control_set_publish_cb()`, `room_control_get()`, `room_control_simulate_fault()` (test aid) |
@@ -130,7 +130,7 @@ room2 task --status (change / 5 s)----------------------------------------------
 | Opening hours and clock | schedule mutex |
 | Log ring and SD log file | storage mutex (lines from different tasks are never mixed) |
 | Login session, lockout counter, PIN record | auth mutex; **one lockout counter shared by console (`auth_login`) and web (`auth_check_pin`)** |
-| SPI3 bus shared by the two readers | ESP-IDF SPI master driver: one device handle per reader, one transaction at a time, own CS pin each |
+| The two readers (shared SCK/MOSI) | Only the `rfid` task talks to them, one reader at a time; each has its own CS and its own MISO line, so their answers can never mix. Reader status for the `rfid` command is guarded by `state_lock` |
 | LCD screen | written only by the `lcd` task; decisions reach it through `lcd_queue` |
 | Web alert ring and web session token | `s_lock` mutex in web_dashboard (entrance task writes alerts, HTTP task reads them) |
 | Scans, door commands, reports to the hub, LCD messages | FreeRTOS queues (`scan_queue`, `actuator_queue`, hub queue, `lcd_queue`) |
@@ -145,7 +145,9 @@ Room and entrance callbacks only call `xQueueSend(..., 0)` or copy into the aler
 | Room 1 PIR / LED | 32 / 21 | `room_config.h` |
 | Room 2 PIR / LED | 33 / 22 | `room_config.h` |
 | SD card SCK / MOSI / MISO / CS (SPI2) | 14 / 13 / 34 / 4 | `storage.c` |
-| RFID readers SCK / MOSI / MISO (SPI3, shared) | 16 / 17 / 35 | `rfid.c` |
+| RFID readers SCK / MOSI (software SPI, shared) | 16 / 17 | `rfid.c` |
+| RFID ENTRY reader CS / MISO | 5 / 35 | `rfid.c` |
+| RFID EXIT reader CS / MISO | 23 / 36 (VP) | `rfid.c` |
 | RFID chip select: ENTRY / EXIT (SDA pin) | 5 / 23 | `rfid.c` |
 | RFID RST (both readers) | wired to 3.3 V (always running) | `diagram.json` |
 | Entrance servos (entry / exit), LEDC 50 Hz | 18 / 19 | `access_control.c` |

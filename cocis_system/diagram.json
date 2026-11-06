@@ -374,7 +374,7 @@
     ],
     [
       "rfid_exit:MISO",
-      "esp:35",
+      "esp:VP",
       "green",
       []
     ],
