@@ -46,6 +46,9 @@ void app_main(void)
     web_dashboard_set_room_provider(web_room);
     ESP_ERROR_CHECK(web_dashboard_register_commands());
 
+    /* "rfid" reader-status command (before entrance_start, like every command) */
+    ESP_ERROR_CHECK(rfid_register_commands());
+
     /* entrance LCD: adds an entrance listener, so it must be before entrance_start */
     ESP_ERROR_CHECK(lcd_display_start());
 

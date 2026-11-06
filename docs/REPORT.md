@@ -72,8 +72,8 @@ All parts are wired to the one ESP32 DevKit C v4 in `cocis_system/diagram.json`.
 | Red LED + 220 Ω | Access denied | GPIO 26 |
 | Buzzer (volume 1) | One short beep when granted, two long beeps when denied (2 kHz) | GPIO 27 |
 | 16x2 LCD (`wokwi-lcd1602`, I2C, address 0x27) | Welcome / denied message and the idle clock at the entrance | SDA 15, SCL 2 |
-| MFRC522 reader, ENTRY (`board-mfrc522`) | Reads cards at the entry door | SPI3: SCK 16, MOSI 17, MISO 35, SDA (CS) 5; RST to 3.3 V |
-| MFRC522 reader, EXIT (`board-mfrc522`) | Reads cards at the exit door | same SPI3 bus, SDA (CS) 23; RST to 3.3 V |
+| MFRC522 reader, ENTRY (`board-mfrc522`) | Reads cards at the entry door | Software SPI: SCK 16, MOSI 17, MISO 35, SDA (CS) 5; RST to 3.3 V |
+| MFRC522 reader, EXIT (`board-mfrc522`) | Reads cards at the exit door | same SCK 16 / MOSI 17, own MISO 36 (VP), SDA (CS) 23; RST to 3.3 V |
 | microSD card (SPI2) | Log file `ACCESS.LOG` | SCK 14, MOSI 13, MISO 34, CS 4 |
 | Serial monitor (UART0, 115200 baud) | Admin menu, backup typed scans | TX / RX |
 | Wi-Fi (built in) | Joins `Wokwi-GUEST`; web dashboard on port 80 → http://localhost:8180 | — |
@@ -84,7 +84,7 @@ All parts are wired to the one ESP32 DevKit C v4 in `cocis_system/diagram.json`.
 
 ### 1.4 Software design
 
-**RFID driver (`rfid.c`).** It is a hand-written, register-level driver (no library). One register access is two bytes over SPI: the address byte `(reg << 1) & 0x7E` (+ `0x80` for a read), then the data. At start-up the driver does a soft reset, sets the timer (about 25 ms timeout), turns the antenna on and reads `VersionReg`. Any value except `0x00` or `0xFF` means a reader answered (`[RFID] ENTRY reader v0x%02X OK`); `0x00` or `0xFF` means nothing is on the bus (`NOT FOUND ..., use typed in/out`). Every 150 ms the `rfid` task asks each reader:
+**RFID driver (`rfid.c`).** It is a hand-written, register-level driver (no library). SPI is done in software (`spi_byte()`: set MOSI, clock high, read MISO, clock low, 8 times per byte), so each reader can have its own MISO line. One register access is two bytes: the address byte `(reg << 1) & 0x7E` (+ `0x80` for a read), then the data. At start-up the driver does a soft reset, sets the timer (about 25 ms timeout), turns the antenna on and reads `VersionReg`. Any value except `0x00` or `0xFF` means a reader answered (`[RFID] ENTRY reader v0x%02X OK`); `0x00` or `0xFF` means nothing answered on that reader's MISO line (`NOT FOUND ..., use typed in/out`). About every 50 ms the `rfid` task asks each reader:
 
 1. **WUPA** (wake up, 7 bits): a card answers with 2 bytes (ATQA). If not, there is no card (tried twice).
 2. **Anticollision** (`0x93 0x20`): the card sends 4 UID bytes + BCC. The driver checks BCC = UID0 ^ UID1 ^ UID2 ^ UID3, so a corrupted read is ignored. The grey NFC Tag has a 7-byte UID; here it answers `0x88` (cascade tag) + its first 3 bytes, so it reads as `88041122`. That ID is not registered, so it is denied as an unknown tag.
@@ -128,7 +128,7 @@ Every shared record has one owner and one lock, so two tasks never update it at 
 | Clock and opening hours | schedule mutex | entrance, management commands |
 | Log ring and SD file | storage mutex | every component that logs |
 | Login session and lockout (one counter for console and web) | auth mutex | management commands, web sign-in |
-| SPI3 bus shared by the two readers | ESP-IDF SPI master driver (one device handle and CS pin per reader, one transaction at a time) | rfid task |
+| The two readers (shared SCK/MOSI) | Only the rfid task talks to them, one at a time; own CS and own MISO line per reader; reader status guarded by `state_lock` | rfid task, `rfid` command |
 | LCD screen | only the `lcd` task writes it; decisions reach it through `lcd_queue` | lcd task |
 | Web alert ring (30 alerts) and session token | `s_lock` mutex in web_dashboard | access task (writes alerts), HTTP task (reads) |
 
@@ -176,7 +176,7 @@ The web dashboard gives the same information in a browser, plus live alerts (sec
 | Serial management interface | `help`, `status`, `inside`, `rooms`, `log`, `syslog`, `wifi`, plus protected setting commands. Extra interface: the web Security Dashboard |
 | Configurable schedule | Default 08:00–18:00; only a logged-in admin (console or web) can change hours or the clock; entrance enforces the hours |
 | Authentication | Salted SHA-256 PIN, lockout, idle timeout; schedule and other privileged commands require login |
-| Synchronisation | One mutex per shared record, one owner for occupancy, queues between tasks, SPI driver for the shared reader bus (section 1.5) |
+| Synchronisation | One mutex per shared record, one owner for occupancy, queues between tasks, one task owning both readers (section 1.5) |
 
 ### 1.8 Innovation / additional features
 
@@ -240,7 +240,7 @@ Each member owned one part of the system, developed it on their own branch and m
 - Built the serial console with simulated RFID (`in` / `out`), character echo, PIN masking, and the command table other components register into.
 - Kept the “who is inside” record and the entrance log; added card blocking saved in NVS.
 - Added the entrance parts to `diagram.json` and wrote the first README.
-- **New:** wrote the `rfid` component: MFRC522 register access over SPI3, soft reset and antenna set-up, WUPA request, anticollision with BCC check, debounce, and the `rfid` task that calls `entrance_submit_scan()`.
+- **New:** wrote the `rfid` component: MFRC522 register access over software SPI (bit-banged, mode 0, own MISO per reader), soft reset and antenna set-up, WUPA request, anticollision with BCC check, debounce, and the `rfid` task that calls `entrance_submit_scan()`.
 - **New:** made the driver work with the two official Wokwi `board-mfrc522` readers on one SPI bus (separate chip selects 5 and 23); the version check accepts any answer except `0x00` / `0xFF`.
 - **New:** added card roles and colours (`entrance_role_t`, `entrance_role_name()`, `entrance_role_color()`) and matched the card table to the Wokwi presets (Blue Brian, Green Alice, Yellow Grace, Red Dan, orange Key Fob blocked); role/colour/since-time in `inside` and `users`.
 - **New:** the buzzer pattern: one short beep when granted, two long beeps when denied.
@@ -261,7 +261,7 @@ Each member owned one part of the system, developed it on their own branch and m
 - Set up the single-ESP32 project (`cocis_system`) and the shared `components/` layout.
 - Maintained the repository: `.gitignore`, removal of the old per-node folders, and `PROJECT_STRUCTURE.md`.
 - **New:** wrote the `lcd_display` component: the PCF8574 I2C backpack bits (RS, EN, backlight, D4–D7), the HD44780 4-bit start-up, the welcome / denied / idle screens, and the `lcd` task fed by a queue from an entrance event listener, so the entrance never waits for the slow I2C bus. The system keeps running if no LCD answers.
-- **New:** wired the two `board-mfrc522` readers (shared SPI3 bus, CS 5 and 23, RST to 3.3 V) and the LCD (SDA 15, SCL 2) in `diagram.json`, laid the circuit out in zones so no parts overlap, and checked the pin plan has no clashes.
+- **New:** wired the two `board-mfrc522` readers (shared SCK 16 / MOSI 17, CS 5 and 23, MISO 35 and 36, RST to 3.3 V) and the LCD (SDA 15, SCL 2) in `diagram.json`, laid the circuit out in zones so no parts overlap, and checked the pin plan has no clashes.
 - **New:** `wokwi.toml`: the port forward `localhost:8180` → ESP32 port 80. `sdkconfig.defaults`: large app partition, 4 MB flash, bigger event task stack and HTTP header size.
 
 ### Katumba Joshua Mugwanya: storage, schedule, authentication and management

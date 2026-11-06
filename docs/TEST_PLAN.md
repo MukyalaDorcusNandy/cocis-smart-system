@@ -92,13 +92,14 @@ Typed `in`/`out` is not used here. To tap a card: click a reader, pick a card an
 
 | # | Steps | Expected |
 |---|---|---|
+| 7.0 | Type `rfid` | `ENTRY reader: OK (version 0x..), cards read 0, card on reader: none` and the same for `EXIT`. `NOT FOUND` means that reader's wiring is wrong; use typed scans |
 | 7.1 | ENTRY reader: Tap the Green Card | `[RFID ENTRY] card 11223344`, then `>> ENTRY 11223344 (Alice (Staff), green card) -> GRANTED [ok] \| inside now: 1`; LCD `WELCOME Alice` / `Staff GREEN card`, entry servo opens, one short beep |
 | 7.2 | ENTRY reader: Hold the Green Card for 5 s | Only one `[RFID ENTRY] card 11223344` line (the card is reported once while it stays on the reader) |
 | 7.3 | Take the card away, then Tap the Green Card on ENTRY again | `[RFID ENTRY] card 11223344` again, then `-> DENIED [already inside (anti-passback)]`; LCD `DENIED Alice` / `Already inside`, red LED, two long beeps |
 | 7.4 | EXIT reader: Tap the Green Card | `[RFID EXIT] card 11223344`, `>> EXIT 11223344 (Alice (Staff), green card) -> GRANTED [ok] \| inside now: 0`; LCD `BYE Alice`, exit servo opens |
 | 7.5 | ENTRY reader: Tap the NFC Tag | `[RFID ENTRY] card 88041122`, `>> ENTRY 88041122 (-, no card) -> DENIED [unknown tag]`; LCD `DENIED` / `Unknown card` |
 | 7.6 | ENTRY reader: Tap the Key Fob | `[RFID ENTRY] card C0FFEE99`, `-> DENIED [tag blocked]`; LCD `DENIED Lost` / `Card blocked` |
-| 7.7 | Both readers at the same time: Hold the Blue Card on ENTRY and the Yellow Card on EXIT | Both `[RFID ENTRY] card 01020304` and `[RFID EXIT] card 55667788` lines appear; the shared SPI bus gives no mixed or wrong UIDs |
+| 7.7 | Both readers at the same time: Hold the Blue Card on ENTRY and the Yellow Card on EXIT | Both `[RFID ENTRY] card 01020304` and `[RFID EXIT] card 55667788` lines appear; each reader has its own MISO line, so no mixed or wrong UIDs |
 | 7.8 | Typed backup: `in 55667788` | Works the same as a reader: `>> ENTRY 55667788 (Grace (Guest), yellow card) -> GRANTED [ok] ...` |
 
 ## 8. Card roles, colours and the LCD

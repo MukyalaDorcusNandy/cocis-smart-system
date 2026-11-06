@@ -1,16 +1,23 @@
 /*
  * rfid.c - two MFRC522 RFID readers (ENTRY and EXIT).
  *
- * Hardware: two Wokwi "board-mfrc522" parts. Both readers share one SPI bus (SPI3_HOST: SCK 16, MOSI 17,
- * MISO 35). Each reader has its own chip-select pin (SDA on the MFRC522):
- * GPIO 5 = ENTRY, GPIO 23 = EXIT. RST is wired to 3.3 V (always running).
- * In the simulator: click a reader, pick a card (Blue, Green, ...) and press
- * Tap. The ESP-IDF SPI driver gives each reader
- * a "device handle" and only lets one transaction use the bus at a time,
- * so the two readers can never talk over each other (synchronisation).
+ * Hardware: two Wokwi "board-mfrc522" parts. In the simulator: click a
+ * reader, pick a card (Blue, Green, ...) and press Tap (or switch on Hold).
+ *
+ * SPI is done in software ("bit-banging", SPI mode 0): the ESP32 drives the
+ * clock (SCK) and data out (MOSI) pins itself and reads data in (MISO).
+ *   SCK 16 and MOSI 17 are shared by both readers.
+ *   Each reader has its OWN chip-select (SDA pin) and its OWN MISO line:
+ *     ENTRY: CS GPIO 5,  MISO GPIO 35
+ *     EXIT:  CS GPIO 23, MISO GPIO 36 (VP)
+ *   With separate MISO lines the two readers can never talk over each other.
+ *   RST is wired to 3.3 V (always running).
+ *
+ * Synchronisation: only the rfid task talks to the readers, one at a time.
+ * The reader status shown by the "rfid" command is protected by state_lock.
  *
  * Flow:
- *   rfid_task --(every 150 ms)--> read each reader --> new card?
+ *   rfid_task --(about every 50 ms)--> read each reader --> new card?
  *       --> entrance_submit_scan(is_entry, uid) --> scan_queue --> access_task
  *
  * The small MFRC522 driver below only does what we need:
@@ -24,22 +31,24 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/spi_master.h"
+#include "freertos/semphr.h"
+#include "driver/gpio.h"
+#include "rom/ets_sys.h"
 #include "esp_err.h"
 #include "access_control.h"
 #include "rfid.h"
 
 /* ---- pins and settings (must match diagram.json) ---- */
-#define RFID_HOST       SPI3_HOST
 #define PIN_SCK         16
 #define PIN_MOSI        17
-#define PIN_MISO        35
 #define PIN_CS_ENTRY    5
+#define PIN_MISO_ENTRY  35
 #define PIN_CS_EXIT     23
-#define SPI_CLOCK_HZ    (1 * 1000 * 1000)   /* 1 MHz */
+#define PIN_MISO_EXIT   36
+#define HALF_BIT_US     2       /* about 250 kHz SPI clock */
 
-#define POLL_MS         150     /* how often each reader is checked */
-#define GONE_POLLS      2       /* card counts as removed after 2 empty polls */
+#define POLL_MS         50      /* pause between two rounds of polling */
+#define GONE_POLLS      3       /* card counts as removed after 3 empty polls */
 
 /* ---- MFRC522 registers and commands (datasheet section 9) ---- */
 #define REG_COMMAND     0x01
@@ -68,46 +77,62 @@
 #define PICC_WUPA       0x52    /* wake up any card (also halted ones) */
 #define PICC_SEL_CL1    0x93    /* anticollision / select, cascade level 1 */
 
-/* One reader = one SPI device + its debounce state */
+/* One reader = its pins + its debounce state */
 typedef struct {
-    const char         *name;       /* "ENTRY" / "EXIT" */
-    bool                is_entry;
-    int                 cs_pin;
-    spi_device_handle_t dev;
-    bool                found;      /* VersionReg answered at start-up */
-    char                last_uid[9];/* card already reported ("" = none) */
-    int                 empty_polls;/* polls in a row with no card */
+    const char *name;        /* "ENTRY" / "EXIT" */
+    bool        is_entry;
+    int         cs_pin;
+    int         miso_pin;
+    bool        found;       /* VersionReg answered at start-up */
+    uint8_t     version;     /* value read from VersionReg */
+    char        last_uid[9]; /* card already reported ("" = none) */
+    int         empty_polls; /* polls in a row with no card */
+    int         cards_read;  /* how many cards this reader reported */
 } reader_t;
 
 static reader_t readers[2] = {
-    { .name = "ENTRY", .is_entry = true,  .cs_pin = PIN_CS_ENTRY },
-    { .name = "EXIT",  .is_entry = false, .cs_pin = PIN_CS_EXIT  },
+    { .name = "ENTRY", .is_entry = true,  .cs_pin = PIN_CS_ENTRY, .miso_pin = PIN_MISO_ENTRY },
+    { .name = "EXIT",  .is_entry = false, .cs_pin = PIN_CS_EXIT,  .miso_pin = PIN_MISO_EXIT  },
 };
 
+static SemaphoreHandle_t state_lock;   /* guards found/version/last_uid/cards_read */
+
 /* ------------------------------------------------------------------ */
-/* 1. REGISTER ACCESS OVER SPI                                         */
+/* 1. REGISTER ACCESS OVER SOFTWARE SPI                                */
 /*    address byte = (reg << 1) & 0x7E, with 0x80 added for a read     */
 /* ------------------------------------------------------------------ */
 
-static esp_err_t reg_write(reader_t *r, uint8_t reg, uint8_t val)
+/* Sends one byte and receives one byte at the same time (SPI mode 0:
+ * data is set while SCK is low and read when SCK goes high). */
+static uint8_t spi_byte(reader_t *r, uint8_t out)
 {
-    spi_transaction_t t = {
-        .flags = SPI_TRANS_USE_TXDATA,
-        .length = 16,                          /* 2 bytes, in bits */
-        .tx_data = { (uint8_t)((reg << 1) & 0x7E), val },
-    };
-    return spi_device_polling_transmit(r->dev, &t);
+    uint8_t in = 0;
+    for (int bit = 7; bit >= 0; bit--) {
+        gpio_set_level(PIN_MOSI, (out >> bit) & 1);
+        ets_delay_us(HALF_BIT_US);
+        gpio_set_level(PIN_SCK, 1);
+        in = (uint8_t)((in << 1) | gpio_get_level(r->miso_pin));
+        ets_delay_us(HALF_BIT_US);
+        gpio_set_level(PIN_SCK, 0);
+    }
+    return in;
+}
+
+static void reg_write(reader_t *r, uint8_t reg, uint8_t val)
+{
+    gpio_set_level(r->cs_pin, 0);              /* select this reader */
+    spi_byte(r, (uint8_t)((reg << 1) & 0x7E));
+    spi_byte(r, val);
+    gpio_set_level(r->cs_pin, 1);
 }
 
 static uint8_t reg_read(reader_t *r, uint8_t reg)
 {
-    spi_transaction_t t = {
-        .flags = SPI_TRANS_USE_TXDATA | SPI_TRANS_USE_RXDATA,
-        .length = 16,
-        .tx_data = { (uint8_t)(((reg << 1) & 0x7E) | 0x80), 0x00 },
-    };
-    if (spi_device_polling_transmit(r->dev, &t) != ESP_OK) return 0;
-    return t.rx_data[1];                       /* value comes in the 2nd byte */
+    gpio_set_level(r->cs_pin, 0);
+    spi_byte(r, (uint8_t)(((reg << 1) & 0x7E) | 0x80));
+    uint8_t v = spi_byte(r, 0x00);             /* value comes in the 2nd byte */
+    gpio_set_level(r->cs_pin, 1);
+    return v;
 }
 
 /* ------------------------------------------------------------------ */
@@ -144,12 +169,12 @@ static int mfrc_transceive(reader_t *r, const uint8_t *data, int len,
     reg_write(r, REG_COMMAND, CMD_TRANSCEIVE);
     reg_write(r, REG_BIT_FRAMING, 0x80 | tx_bits);   /* StartSend */
 
-    /* wait for "answer received" or "timeout" (at most ~20 ticks) */
+    /* wait for "answer received" or "timeout" (at most about 30 ms) */
     uint8_t irq = 0;
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 30; i++) {
         irq = reg_read(r, REG_COMIRQ);
         if (irq & (IRQ_RX_IDLE | IRQ_TIMER)) break;
-        vTaskDelay(1);
+        ets_delay_us(1000);
     }
     reg_write(r, REG_BIT_FRAMING, tx_bits);    /* clear StartSend */
 
@@ -191,8 +216,10 @@ static bool mfrc_anticoll(reader_t *r, uint8_t uid[4])
 static bool read_card(reader_t *r, char out[9])
 {
     uint8_t uid[4];
-    /* a real card that was just read may ignore one WUPA, so try twice */
-    if (!mfrc_request(r) && !mfrc_request(r)) return false;
+    /* a card that was just read may ignore one WUPA, so try again then */
+    if (!mfrc_request(r)) {
+        if (r->last_uid[0] == '\0' || !mfrc_request(r)) return false;
+    }
     if (!mfrc_anticoll(r, uid)) return false;
     snprintf(out, 9, "%02X%02X%02X%02X", uid[0], uid[1], uid[2], uid[3]);
     return true;
@@ -210,14 +237,19 @@ static void poll_reader(reader_t *r)
     if (read_card(r, uid)) {
         r->empty_polls = 0;
         if (strcmp(uid, r->last_uid) != 0) {   /* a new card */
+            xSemaphoreTake(state_lock, portMAX_DELAY);
             strcpy(r->last_uid, uid);
+            r->cards_read++;
+            xSemaphoreGive(state_lock);
             printf("[RFID %s] card %s\n", r->name, uid);
             if (entrance_submit_scan(r->is_entry, uid) != ESP_OK) {
                 printf("[RFID %s] scan queue full, card ignored\n", r->name);
             }
         }
     } else if (r->last_uid[0] != '\0' && ++r->empty_polls >= GONE_POLLS) {
+        xSemaphoreTake(state_lock, portMAX_DELAY);
         r->last_uid[0] = '\0';                 /* card removed */
+        xSemaphoreGive(state_lock);
     }
 }
 
@@ -228,8 +260,11 @@ static void rfid_task(void *arg)
         mfrc_init(&readers[i]);
         uint8_t v = reg_read(&readers[i], REG_VERSION);
         /* 0x91 / 0x92 = MFRC522 v1.0 / v2.0 (clones answer other values);
-         * 0x00 or 0xFF means nothing answered on the SPI bus */
+         * 0x00 or 0xFF means nothing answered on the MISO line */
+        xSemaphoreTake(state_lock, portMAX_DELAY);
+        readers[i].version = v;
         readers[i].found = (v != 0x00 && v != 0xFF);
+        xSemaphoreGive(state_lock);
         if (readers[i].found) {
             printf("[RFID] %s reader v0x%02X OK\n", readers[i].name, v);
         } else {
@@ -247,31 +282,52 @@ static void rfid_task(void *arg)
 }
 
 /* ------------------------------------------------------------------ */
-/* 4. START-UP                                                         */
+/* 4. "rfid" COMMAND AND START-UP                                      */
 /* ------------------------------------------------------------------ */
+
+static void cmd_rfid(const char *args)
+{
+    (void)args;
+    if (state_lock == NULL) { printf("rfid not started\n"); return; }
+    xSemaphoreTake(state_lock, portMAX_DELAY);
+    for (int i = 0; i < 2; i++) {
+        reader_t *r = &readers[i];
+        printf("  %-5s reader: %s (version 0x%02X), cards read %d, card on reader: %s\n",
+               r->name, r->found ? "OK" : "NOT FOUND", r->version, r->cards_read,
+               r->last_uid[0] ? r->last_uid : "none");
+    }
+    xSemaphoreGive(state_lock);
+    printf("  tap a card: click a reader, pick a card, press Tap (or type in/out <UID>)\n");
+}
+
+esp_err_t rfid_register_commands(void)
+{
+    return entrance_register_command("rfid", "rfid                status of the two RFID readers", cmd_rfid);
+}
 
 esp_err_t rfid_start(void)
 {
-    spi_bus_config_t bus = {
-        .sclk_io_num = PIN_SCK,
-        .mosi_io_num = PIN_MOSI,
-        .miso_io_num = PIN_MISO,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
-        .max_transfer_sz = 32,
-    };
-    esp_err_t e = spi_bus_initialize(RFID_HOST, &bus, SPI_DMA_DISABLED);
-    if (e != ESP_OK) return e;
+    state_lock = xSemaphoreCreateMutex();
+    if (state_lock == NULL) return ESP_ERR_NO_MEM;
 
-    for (int i = 0; i < 2 && e == ESP_OK; i++) {
-        spi_device_interface_config_t dev = {
-            .clock_speed_hz = SPI_CLOCK_HZ,
-            .mode = 0,                         /* MFRC522 uses SPI mode 0 */
-            .spics_io_num = readers[i].cs_pin,
-            .queue_size = 1,
-        };
-        e = spi_bus_add_device(RFID_HOST, &dev, &readers[i].dev);
-    }
+    /* outputs: clock, data out and the two chip-selects (idle high = not selected) */
+    gpio_config_t out = {
+        .pin_bit_mask = (1ULL << PIN_SCK) | (1ULL << PIN_MOSI) |
+                        (1ULL << PIN_CS_ENTRY) | (1ULL << PIN_CS_EXIT),
+        .mode = GPIO_MODE_OUTPUT,
+    };
+    esp_err_t e = gpio_config(&out);
+    if (e != ESP_OK) return e;
+    gpio_set_level(PIN_SCK, 0);
+    gpio_set_level(PIN_CS_ENTRY, 1);
+    gpio_set_level(PIN_CS_EXIT, 1);
+
+    /* inputs: one MISO line per reader (GPIO 35 and 36 are input-only pins) */
+    gpio_config_t in = {
+        .pin_bit_mask = (1ULL << PIN_MISO_ENTRY) | (1ULL << PIN_MISO_EXIT),
+        .mode = GPIO_MODE_INPUT,
+    };
+    e = gpio_config(&in);
     if (e != ESP_OK) return e;
 
     if (xTaskCreate(rfid_task, "rfid", 4096, NULL, 4, NULL) != pdPASS) {

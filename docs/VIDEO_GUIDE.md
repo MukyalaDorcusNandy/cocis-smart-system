@@ -42,13 +42,13 @@ Line numbers below are approximate (`file:line`). Search for the function name i
 
 | Open | Say |
 |---|---|
-| `components/rfid/rfid.c` top comment and pins (lines 1–40) | "The two readers are Wokwi's official MFRC522 part. Both are on SPI3: SCK 16, MOSI 17, MISO 35. Chip select 5 is ENTRY, 23 is EXIT. RST is wired to 3.3 V, so the readers always run." |
+| `components/rfid/rfid.c` top comment and pins (lines 1–40) | "The two readers are Wokwi's official MFRC522 part. They share the clock SCK 16 and data-out MOSI 17. Each has its own chip select (5 ENTRY, 23 EXIT) and its own MISO line (35 ENTRY, 36 EXIT). The ESP32 does SPI in software in `spi_byte()`: set MOSI, clock high, read MISO, clock low, 8 times per byte. RST is wired to 3.3 V, so the readers always run." |
 | `rfid.c` `reg_write()` / `reg_read()` (~92, ~102) | "We use no library. One register access is two bytes over SPI: the address byte is `(reg << 1) & 0x7E`, plus `0x80` for a read, then the data. This is from the MFRC522 datasheet." |
 | `rfid.c` `mfrc_init()` (~117) | "Soft reset, timer about 25 ms, antenna on." |
 | `rfid.c` `mfrc_request()` (~168) and `mfrc_anticoll()` (~176) | "WUPA asks: is a card there? The card answers with ATQA. Then anticollision reads 4 UID bytes and the BCC. If BCC is not the XOR of the four bytes, we ignore the read." |
 | `rfid.c` `read_card()` (~191) | "The UID becomes 8 hex characters, like `01020304` for the Blue Card. The grey NFC Tag has a 7-byte UID, so here we get `88` plus its first 3 bytes: `88041122`. It is not registered, so it is denied." |
 | `rfid.c` `poll_reader()` (~207) | "Debounce: a card is reported once. It is reported again only after 2 empty polls, so holding a card does not open the door again and again." |
-| `rfid.c` `rfid_task()` (~224) | "At start it reads `VersionReg`. Any value except `0x00` or `0xFF` means a reader answered. Then every 150 ms it polls both readers and calls `entrance_submit_scan()`. The two readers share one bus; the ESP-IDF SPI driver gives each one its own device handle and CS pin and runs one transaction at a time." |
+| `rfid.c` `rfid_task()` (~224) | "At start it reads `VersionReg`. Any value except `0x00` or `0xFF` means a reader answered. Then about every 50 ms it polls both readers and calls `entrance_submit_scan()`. The two readers share SCK and MOSI but each has its own CS and MISO, and only this one task talks to them. The `rfid` command prints each reader's status." |
 | `components/access_control/access_control.c` `entrance_submit_scan()` (~237) | "This puts the scan on `scan_queue`. The typed `in`/`out` command and the web use the same function, so the decision code is the same." |
 | `access_control.c` `users[]` (~108), `role_colors[]` (~155) | "Every card has a role, and the cards match the Wokwi presets: Blue Card is Brian, a student; Green is Alice, staff; Yellow is Grace, a guest; Red is Dan, admin. The orange Key Fob is a lost card, blocked." |
 | `access_control.c` `process_scan()` (~405) | "The rules in order: unknown, blocked, anti-passback, opening hours, emergency exit." |
@@ -69,7 +69,8 @@ Line numbers below are approximate (`file:line`). Search for the function name i
 
 - *Why write your own driver?* — We wanted to understand the reader, not hide it in a library. The driver talks to the MFRC522 registers directly, so the same code would work with a real reader.
 - *What is BCC?* — Block Check Character: the XOR of the 4 UID bytes. The card sends it after the UID. If it does not match, the read was corrupted and we ignore it.
-- *How do two readers share one bus?* — Same SCK, MOSI, MISO; each has its own chip-select pin. The ESP-IDF SPI driver does one transaction at a time, and only the reader whose CS is low answers.
+- *How do two readers share one bus?* — Same SCK and MOSI; each has its own chip-select pin and its own MISO line, so only the selected reader answers and the two answers can never mix. Only the rfid task talks to them, one at a time.
+- *Why software SPI?* — It lets each reader have its own MISO pin (35 and 36). The readers are slow devices, so about 250 kHz is plenty.
 - *What if a reader is missing?* — `VersionReg` reads `0x00` or `0xFF`, so `rfid_task` prints `NOT FOUND ... use typed in/out` and skips that reader. The rest of the system keeps working.
 
 ---
@@ -123,8 +124,8 @@ Line numbers below are approximate (`file:line`). Search for the function name i
 | `lcd_display.c` `lcd_display_start()` (~169) | "If no LCD answers at 0x27 we print `no LCD at 0x27, running without it`, and the system keeps working." |
 | `cocis_system/main/main.c` (~50) | "`lcd_display_start()` is called before `entrance_start()`, because it adds an entrance listener." |
 | `cocis_system/diagram.json`, parts `lcd`, `rfid_entry`, `rfid_exit` (type `board-mfrc522`) | "The LCD has `pins: i2c` and address 0x27. The two readers are Wokwi's official MFRC522 part." |
-| `diagram.json` connections | "Both readers use SCK 16, MOSI 17, MISO 35. ENTRY SDA goes to 5, EXIT SDA to 23. RST goes to 3.3 V. LCD SDA to 15, SCL to 2." |
-| `PROJECT_STRUCTURE.md`, pin plan | "Every pin is used once. The SD card is on SPI2 (14/13/34/4) and the readers on SPI3, so the two buses never clash." |
+| `diagram.json` connections | "Both readers use SCK 16 and MOSI 17. ENTRY: SDA 5, MISO 35. EXIT: SDA 23, MISO 36 (VP). RST goes to 3.3 V. LCD SDA to 15, SCL to 2." |
+| `PROJECT_STRUCTURE.md`, pin plan | "Every pin is used once. The SD card is on SPI2 (14/13/34/4) and the readers on their own pins, so they never clash." |
 | `cocis_system/wokwi.toml` | "`[[net.forward]]` sends `localhost:8180` to ESP32 port 80, so the browser can open the dashboard." |
 | `cocis_system/sdkconfig.defaults` | "Wi-Fi and the web server make the app bigger than 1 MB, so we use the large app partition and 4 MB flash. We also give the event task a bigger stack and allow longer HTTP headers for the token." |
 
@@ -142,7 +143,7 @@ Line numbers below are approximate (`file:line`). Search for the function name i
 - *Why one ESP32, not three?* — The lecturer said free Wokwi supports one microcontroller. Each terminal is still separate: its own tasks, pins, data and mutex.
 - *Why a queue for the LCD?* — I2C is slow. The entrance task must decide the next scan quickly, so it only drops the event in the queue and the `lcd` task does the slow writing.
 - *What is 4-bit mode?* — The backpack has only 4 data lines to the LCD, so every byte is sent as two halves, each with an EN pulse.
-- *Why a second SPI bus for the readers?* — The SD card uses SPI2. Putting the readers on SPI3 keeps the pins separate and lets the SD log and the readers work without waiting for each other.
+- *Why do the readers not share the SD card bus?* — The SD card uses SPI2. The readers have their own pins, so the SD log and the readers never wait for each other.
 - *Why `rm -f sdkconfig`?* — `sdkconfig.defaults` is only used when `sdkconfig` is created. Deleting the old one once makes the new partition and flash settings apply.
 - *Are GPIO 2 and 15 safe?* — They are strapping pins. In Wokwi it is fine. On a real board we would move the LCD to other pins.
 
