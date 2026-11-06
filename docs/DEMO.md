@@ -28,7 +28,7 @@ Do the steps **in order**: each part uses the state the earlier parts left (who 
 | Yellow Card | `55667788` | Grace | Guest, yellow |
 | Red Card | `AABBCCDD` | Dan | Admin, red |
 | Key Fob (orange) | `C0FFEE99` | Lost card | blocked |
-| NFC Tag (grey) | `88041122` | not registered | unknown |
+| NFC Tag (grey) | `04112233` | not registered | unknown |
 
 ## Part 1. Start-up (1 minute)
 
@@ -72,7 +72,7 @@ Keep the dashboard visible for the rest of the demo: every scan appears there wi
 | Step | Do | You should see |
 |---|---|---|
 | 4.1 | ENTRY reader: **Blue Card** again (Brian is already inside) | `-> DENIED [already inside (anti-passback)]`. Red LED, two long beeps. LCD `DENIED Brian` / `Already inside`. Dashboard: red **SECURITY ALERT** toast with an alarm sound |
-| 4.2 | ENTRY reader: **NFC Tag** | `>> ENTRY 88041122 (-, no card) -> DENIED [unknown tag]`. LCD `Unknown card`. Red alert "unknown card" |
+| 4.2 | ENTRY reader: **NFC Tag** | `>> ENTRY 04112233 (-, no card) -> DENIED [unknown tag]`. LCD `Unknown card`. Red alert "unknown card" |
 | 4.3 | ENTRY reader: **Key Fob** (a lost card) | `-> DENIED [tag blocked]`. LCD `Card blocked`. Red alert "blocked card" |
 | 4.4 | EXIT reader: **Red Card** (Dan never came in) | `>> EXIT AABBCCDD (Dan (Admin), red card) -> DENIED [not inside]` |
 

@@ -326,7 +326,8 @@ async function refresh() {
     s.alerts.filter(a => a.id > lastAlertId).reverse().forEach(a => {
       const alarm = !a.granted;
       toast({ h: alarm ? 'SECURITY ALERT: ' + alertTitle(a) : alertTitle(a),
-              m: a.name + ' (' + a.role + ') - ' + a.reason, color: a.color, alarm });
+              // the name already holds the role ("Brian (Student)"); an unknown card has name "-"
+              m: (a.name === '-' ? 'Card ' + a.uid : a.name) + ' - ' + a.reason, color: a.color, alarm });
       beep(alarm);
     });
   }

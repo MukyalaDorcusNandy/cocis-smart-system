@@ -31,7 +31,7 @@ The firmware is split into ten ESP-IDF components, each owned by one or two memb
 | Component | Role | Tasks it runs |
 |---|---|---|
 | `access_control` | Entrance: card decisions, roles and colours, doors, LEDs, buzzer, serial console | `access` (priority 5), `actuator` (4), `console` (3) |
-| `rfid` | Two MFRC522 readers on one SPI bus; sends each new card to the entrance | `rfid` (4) |
+| `rfid` | Two MFRC522 readers (software SPI, own CS and MISO each); sends each new card to the entrance | `rfid` (4) |
 | `lcd_display` | 16x2 I2C LCD at the entrance: welcome / denied message, idle clock | `lcd` (3) |
 | `web_dashboard` | Wi-Fi, HTTP server, PIN sign-in, live alerts, admin actions | ESP-IDF `httpd` (5) and Wi-Fi tasks |
 | `room_control` | One instance per room: PIR occupancy and light control | `room1`, `room2` (5) |
@@ -42,6 +42,29 @@ The firmware is split into ten ESP-IDF components, each owned by one or two memb
 | `management` | Admin commands added to the entrance console | none |
 
 The brief describes three terminals: the entrance, room 1 and room 2. Here each terminal is a group of FreeRTOS tasks on the same ESP32, with its own pins, its own data and its own mutex, so it behaves like a separate unit.
+
+**Figure 1. Tasks and queues** (arrows are queues or listener calls; every task logs through `schedule_log` to the SD card)
+
+```mermaid
+flowchart LR
+    subgraph Entrance
+        RF[rfid task<br/>2 x MFRC522] -->|entrance_submit_scan| SQ[(scan_queue)]
+        CON[console task<br/>typed in/out] -->|entrance_submit_scan| SQ
+        SQ --> ACC[access task<br/>grant / deny]
+        ACC --> AQ[(actuator_queue)] --> ACT[actuator task<br/>servos, LEDs, buzzer]
+    end
+    subgraph Rooms
+        R1[room1 task<br/>PIR + light]
+        R2[room2 task<br/>PIR + light]
+    end
+    ACC -->|event| HQ[(hub queue)]
+    R1 -->|status + heartbeat| HQ
+    R2 -->|status + heartbeat| HQ
+    HQ --> HUB[hub task<br/>offline detection]
+    ACC -->|event| LQ[(lcd_queue)] --> LCD[lcd task<br/>16x2 LCD]
+    ACC -->|event| AR[(alert ring)] --> WEB[httpd<br/>Security Dashboard]
+    WEB -->|test scan| SQ
+```
 
 ### 1.2 Communication between the three terminals
 
@@ -59,6 +82,10 @@ The entrance runs as a chain of four tasks (rfid, console, access, actuator). Bo
 ### 1.3 Hardware components and pin plan
 
 All parts are wired to the one ESP32 DevKit C v4 in `cocis_system/diagram.json`. The parts are placed in zones around the ESP32: the rooms (PIRs + room LEDs) at the top left, above the ESP32; the ENTRY reader and its door servo at the top right; the LCD on the right between the two readers; the EXIT reader and its door servo at the bottom right; the SD card, the green/red LEDs and the buzzer at the bottom left. The pin plan below has no clashes. It is also recorded in `room_config.h`, `access_control.c`, `rfid.c`, `lcd_display.c`, `storage.c` and `PROJECT_STRUCTURE.md`.
+
+![Figure 2. The Wokwi circuit: one ESP32 with the two RFID readers, door servos, LCD, room PIRs and lights, SD card, LEDs and buzzer](images/01-circuit.png)
+
+*Figure 2. The Wokwi circuit. Top left: the two lecture rooms (PIR + light). Right: the ENTRY reader and door (top), the LCD, the EXIT reader and door (bottom). Bottom left: SD card, green/red LEDs and buzzer.*
 
 | Part | Purpose | ESP32 pins |
 |---|---|---|
@@ -87,7 +114,7 @@ All parts are wired to the one ESP32 DevKit C v4 in `cocis_system/diagram.json`.
 **RFID driver (`rfid.c`).** It is a hand-written, register-level driver (no library). SPI is done in software (`spi_byte()`: set MOSI, clock high, read MISO, clock low, 8 times per byte), so each reader can have its own MISO line. One register access is two bytes: the address byte `(reg << 1) & 0x7E` (+ `0x80` for a read), then the data. At start-up the driver does a soft reset, sets the timer (about 25 ms timeout), turns the antenna on and reads `VersionReg`. Any value except `0x00` or `0xFF` means a reader answered (`[RFID] ENTRY reader v0x%02X OK`); `0x00` or `0xFF` means nothing answered on that reader's MISO line (`NOT FOUND ..., use typed in/out`). About every 50 ms the `rfid` task asks each reader:
 
 1. **WUPA** (wake up, 7 bits): a card answers with 2 bytes (ATQA). If not, there is no card (tried twice).
-2. **Anticollision** (`0x93 0x20`): the card sends 4 UID bytes + BCC. The driver checks BCC = UID0 ^ UID1 ^ UID2 ^ UID3, so a corrupted read is ignored. The grey NFC Tag has a 7-byte UID; here it answers `0x88` (cascade tag) + its first 3 bytes, so it reads as `88041122`. That ID is not registered, so it is denied as an unknown tag.
+2. **Anticollision** (`0x93 0x20`): the card sends 4 UID bytes + BCC. The driver checks BCC = UID0 ^ UID1 ^ UID2 ^ UID3, so a corrupted read is ignored. The grey NFC Tag has a 7-byte UID (`04:11:22:33:44:55:66`); in Wokwi it answers with its first 4 bytes, so it reads as `04112233`. That ID is not registered, so it is denied as an unknown tag.
 3. **Debounce:** a card is reported once (`[RFID ENTRY] card 01020304`). The same card is reported again only after 2 empty polls (card removed).
 
 **Card roles and colours.** Every card has a role: Student (blue), Staff (green), Guest (yellow), Admin (red). The test cards match the Wokwi card presets, so the colour of the card you tap is the role colour. The LCD shows it (`Student BLUE card`), `inside` and `users` print the role and colour, `inside` also shows the time the person came in, and the dashboard shows a colour chip.
@@ -160,7 +187,7 @@ All commands are typed in the Wokwi serial monitor. Viewing needs no login; chan
 | `roomfail <n> on\|off` | Test aid: make a room stop reporting, to show offline detection | yes |
 | `help` | List all commands | no |
 
-Registered cards are fixed in the firmware and match the Wokwi card presets: Alice (Staff) Green Card `11223344`, Brian (Student) Blue Card `01020304`, Grace (Guest) Yellow Card `55667788`, Dan (Admin) Red Card `AABBCCDD`, and the lost card, the orange Key Fob `C0FFEE99`, which starts blocked. Carol (Student, blue) `C3D4E5F6` has no Wokwi card and is used with typed scans. The grey NFC Tag is not registered: it reads as `88041122` and is denied as an unknown tag.
+Registered cards are fixed in the firmware and match the Wokwi card presets: Alice (Staff) Green Card `11223344`, Brian (Student) Blue Card `01020304`, Grace (Guest) Yellow Card `55667788`, Dan (Admin) Red Card `AABBCCDD`, and the lost card, the orange Key Fob `C0FFEE99`, which starts blocked. Carol (Student, blue) `C3D4E5F6` has no Wokwi card and is used with typed scans. The grey NFC Tag is not registered: it reads as `04112233` and is denied as an unknown tag.
 
 The web dashboard gives the same information in a browser, plus live alerts (section 1.4).
 
@@ -184,7 +211,7 @@ The brief asks for innovation. These features go beyond the basic requirements:
 
 | Feature | Why it helps |
 |---|---|
-| **Two MFRC522 readers with a hand-written register-level driver (no library)** | The driver does register access over SPI, WUPA, anticollision and the BCC check itself, and two readers share one SPI bus with separate chip selects. The same code would work with a real reader. |
+| **Two MFRC522 readers with a hand-written register-level driver (no library)** | The driver does the SPI itself (bit-banged), REQA/WUPA, anticollision and the BCC check, reads the FIFO in one burst, and gives each reader its own chip select and MISO line. The `rfid` command shows each reader's status. The same code would work with a real reader. |
 | **Entrance LCD** | A 16x2 I2C LCD greets the person by name with role and card colour, gives a short reason when denied, and shows the clock, people inside and OPEN/CLOSED when idle. |
 | **Colour-coded roles** | Student blue, Staff green, Guest yellow, Admin red, matching the Wokwi card colours. A guard sees at a glance who came in; the colour is also on the LCD, the console and the dashboard. |
 | **Wi-Fi Security Dashboard with live alerts** | Security staff watch who is inside, who is out and the rooms from a browser. Denied, unknown and blocked cards pop up as red alerts with an alarm tone. |
@@ -193,6 +220,28 @@ The brief asks for innovation. These features go beyond the basic requirements:
 | **Emergency mode** | An admin can allow exit outside opening hours (safe egress), and it is logged. |
 | **Salted PIN hash** | The PIN is stored as salt + SHA-256 hash, compared in constant time, never printed or logged. |
 | **SD logging with RAM fallback** | Every event goes to `ACCESS.LOG`; if the card fails, the system keeps a RAM log and says so. |
+
+### 1.9 The system running (screenshots)
+
+![Figure 3. Boot log](images/02-boot.png)
+
+*Figure 3. Serial output at start-up: both MFRC522 readers answer (`v0x92 OK`), the Blue Card is read at ENTRY and then at EXIT, the hub updates building occupancy, and the ESP32 joins Wi-Fi and starts the dashboard (`[WEB] dashboard on port 80`).*
+
+![Figure 4. Access granted](images/03-granted.png)
+
+*Figure 4. Access granted. The Blue Card is held on the ENTRY reader (UID 01:02:03:04). The console prints `[RFID ENTRY] card 01020304` and `GRANTED`, the LCD shows the person inside (`In:1`), and the dashboard shows Brian as a blue Student chip with the time he came in.*
+
+![Figure 5. Access denied with a security alert](images/04-denied-security-alert.png)
+
+*Figure 5. Access denied. The NFC Tag is not registered: the console prints `DENIED [unknown tag]` and the dashboard pops up a red **SECURITY ALERT: DENIED - unknown card** with an alarm tone.*
+
+![Figure 6. Dashboard sign-in](images/05-dashboard-login.png)
+
+*Figure 6. The dashboard sign-in page. It uses the admin PIN, with the same 3-try lockout as the serial console.*
+
+![Figure 7. Security Dashboard](images/06-dashboard.png)
+
+*Figure 7. The Security Dashboard with four people inside: each card colour is a role (Alice green Staff, Brian blue Student, Dan red Admin, Grace yellow Guest). Live alerts list every entry, Who is out shows Carol and the blocked lost card, and the Admin panel sets opening hours, emergency mode, test scans and blocks cards.*
 
 ---
 
