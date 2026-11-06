@@ -71,6 +71,7 @@ int entrance_inside_count(void);
  * Shown by the "status" command. The login check is done by the caller
  * (management component). */
 void entrance_set_emergency(bool on);
+bool entrance_get_emergency(void);      /* current emergency mode (thread safe) */
 
 /* Blocks or unblocks a registered card; saved in NVS. ESP_ERR_NOT_FOUND if the
  * UID is not registered. The login check is done by the caller. */

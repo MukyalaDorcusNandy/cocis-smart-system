@@ -206,6 +206,17 @@ void entrance_set_emergency(bool on)
     xSemaphoreGive(state_mutex);
 }
 
+bool entrance_get_emergency(void)
+{
+    bool on = false;
+    if (state_mutex != NULL) {
+        xSemaphoreTake(state_mutex, portMAX_DELAY);
+        on = emergency;
+        xSemaphoreGive(state_mutex);
+    }
+    return on;
+}
+
 int entrance_get_users(entrance_user_t *out, int max)
 {
     if (out == NULL || state_mutex == NULL) return 0;
