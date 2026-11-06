@@ -178,6 +178,22 @@ static void fifo_write(reader_t *r, const uint8_t *data, int len)
     gpio_set_level(r->cs_pin, 1);
 }
 
+/* Reads 'len' bytes from the FIFO in ONE SPI transfer, like the Arduino
+ * MFRC522 library: the FIFO address is sent once per byte (and 0x00 at
+ * the end); each answer byte comes back during the next address byte.
+ * Reading the FIFO with separate transfers loses every second byte,
+ * because the reader takes the next FIFO byte for every address byte. */
+static void fifo_read(reader_t *r, uint8_t *back, int len)
+{
+    uint8_t addr = (uint8_t)(((REG_FIFO_DATA << 1) & 0x7E) | 0x80);
+    gpio_set_level(r->cs_pin, 0);
+    spi_byte(r, addr);
+    for (int i = 0; i < len; i++) {
+        back[i] = spi_byte(r, (i < len - 1) ? addr : 0x00);
+    }
+    gpio_set_level(r->cs_pin, 1);
+}
+
 /* Sends 'len' bytes to the card and reads its answer into 'back'.
  * tx_bits = bits of the last byte to send (0 = whole byte, 7 for REQA/WUPA).
  * Same steps as the Arduino MFRC522 library (PCD_CommunicateWithPICC).
@@ -220,9 +236,7 @@ static int mfrc_transceive(reader_t *r, const uint8_t *data, int len,
 
     int n = reg_read(r, REG_FIFO_LEVEL);
     if (n > back_max) n = back_max;
-    for (int i = 0; i < n; i++) {
-        back[i] = reg_read(r, REG_FIFO_DATA);
-    }
+    if (n > 0) fifo_read(r, back, n);
     return n;
 }
 
