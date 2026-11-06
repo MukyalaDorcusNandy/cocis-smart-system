@@ -21,3 +21,5 @@ dependencies.lock
 # OS files
 .DS_Store
 Thumbs.db
+# Local tool files
+.claude/
