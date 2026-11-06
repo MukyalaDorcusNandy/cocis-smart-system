@@ -13,8 +13,8 @@
     {
       "type": "wokwi-lcd1602",
       "id": "lcd",
-      "top": -230,
-      "left": -120,
+      "top": 30,
+      "left": 330,
       "attrs": {
         "pins": "i2c",
         "i2cAddress": "0x27"
@@ -23,15 +23,15 @@
     {
       "type": "wokwi-pir-motion-sensor",
       "id": "pir1",
-      "top": -20,
-      "left": -430,
+      "top": -260,
+      "left": -470,
       "attrs": {}
     },
     {
       "type": "wokwi-led",
       "id": "led1",
-      "top": -10,
-      "left": -270,
+      "top": -250,
+      "left": -330,
       "attrs": {
         "color": "yellow",
         "label": "Room 1"
@@ -40,8 +40,8 @@
     {
       "type": "wokwi-resistor",
       "id": "r1",
-      "top": 80,
-      "left": -300,
+      "top": -160,
+      "left": -360,
       "attrs": {
         "value": "330"
       }
@@ -49,15 +49,15 @@
     {
       "type": "wokwi-pir-motion-sensor",
       "id": "pir2",
-      "top": 190,
-      "left": -430,
+      "top": -130,
+      "left": -470,
       "attrs": {}
     },
     {
       "type": "wokwi-led",
       "id": "led2",
-      "top": 200,
-      "left": -270,
+      "top": -120,
+      "left": -330,
       "attrs": {
         "color": "yellow",
         "label": "Room 2"
@@ -66,8 +66,8 @@
     {
       "type": "wokwi-resistor",
       "id": "r2",
-      "top": 290,
-      "left": -300,
+      "top": -30,
+      "left": -360,
       "attrs": {
         "value": "330"
       }
@@ -75,43 +75,43 @@
     {
       "type": "wokwi-microsd-card",
       "id": "sd1",
-      "top": 360,
-      "left": -40,
+      "top": 300,
+      "left": -150,
       "attrs": {}
     },
     {
       "type": "board-mfrc522",
       "id": "rfid_entry",
-      "top": -260,
+      "top": -420,
       "left": 300,
       "attrs": {}
     },
     {
       "type": "wokwi-servo",
       "id": "servo_entry",
-      "top": -230,
+      "top": -520,
       "left": 560,
       "attrs": {}
     },
     {
       "type": "board-mfrc522",
       "id": "rfid_exit",
-      "top": 60,
+      "top": 260,
       "left": 300,
       "attrs": {}
     },
     {
       "type": "wokwi-servo",
       "id": "servo_exit",
-      "top": 90,
+      "top": 430,
       "left": 560,
       "attrs": {}
     },
     {
       "type": "wokwi-led",
       "id": "led_grant",
-      "top": 360,
-      "left": 300,
+      "top": 420,
+      "left": -420,
       "attrs": {
         "color": "green",
         "label": "Granted"
@@ -120,8 +120,8 @@
     {
       "type": "wokwi-resistor",
       "id": "r_grant",
-      "top": 450,
-      "left": 280,
+      "top": 520,
+      "left": -440,
       "attrs": {
         "value": "220"
       }
@@ -129,8 +129,8 @@
     {
       "type": "wokwi-led",
       "id": "led_deny",
-      "top": 360,
-      "left": 400,
+      "top": 420,
+      "left": -320,
       "attrs": {
         "color": "red",
         "label": "Denied"
@@ -139,8 +139,8 @@
     {
       "type": "wokwi-resistor",
       "id": "r_deny",
-      "top": 450,
-      "left": 380,
+      "top": 560,
+      "left": -340,
       "attrs": {
         "value": "220"
       }
@@ -148,8 +148,8 @@
     {
       "type": "wokwi-buzzer",
       "id": "bz_door",
-      "top": 350,
-      "left": 520,
+      "top": 420,
+      "left": -200,
       "attrs": {
         "volume": "1"
       }
@@ -211,8 +211,8 @@
       []
     ],
     [
-      "esp:21",
       "r1:2",
+      "esp:21",
       "yellow",
       []
     ],
@@ -247,8 +247,8 @@
       []
     ],
     [
-      "esp:22",
       "r2:2",
+      "esp:22",
       "yellow",
       []
     ],
@@ -385,44 +385,44 @@
       []
     ],
     [
-      "esp:18",
       "servo_entry:PWM",
+      "esp:18",
       "orange",
       []
     ],
     [
-      "esp:5V",
       "servo_entry:V+",
+      "esp:5V",
       "red",
       []
     ],
     [
-      "esp:GND.3",
       "servo_entry:GND",
+      "esp:GND.3",
       "black",
       []
     ],
     [
-      "esp:19",
       "servo_exit:PWM",
+      "esp:19",
       "orange",
       []
     ],
     [
-      "esp:5V",
       "servo_exit:V+",
+      "esp:5V",
       "red",
       []
     ],
     [
-      "esp:GND.3",
       "servo_exit:GND",
+      "esp:GND.3",
       "black",
       []
     ],
     [
-      "esp:25",
       "r_grant:1",
+      "esp:25",
       "green",
       []
     ],
@@ -439,8 +439,8 @@
       []
     ],
     [
-      "esp:26",
       "r_deny:1",
+      "esp:26",
       "red",
       []
     ],
@@ -457,8 +457,8 @@
       []
     ],
     [
-      "esp:27",
       "bz_door:2",
+      "esp:27",
       "purple",
       []
     ],
