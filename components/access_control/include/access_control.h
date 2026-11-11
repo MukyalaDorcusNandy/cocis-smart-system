@@ -9,8 +9,9 @@
  * serial console (UART0), so no other component should read from the serial
  * port. Other components add their own commands with entrance_register_command().
  *
- * RFID is simulated (Wokwi has no RFID reader part): type "in <UID>" or
- * "out <UID>" in the serial monitor; the console turns it into a scan on scan_queue.
+ * Card scans come from the two MFRC522 readers (rfid component), from typing
+ * "in <UID>" / "out <UID>" in the serial monitor, or from the dashboard's test
+ * scan. All three go through entrance_submit_scan() onto scan_queue.
  * Opening hours and the clock come from the schedule component.
  */
 #include <stdbool.h>

@@ -22,7 +22,7 @@
  *
  * The small MFRC522 driver below only does what we need:
  *   init     - soft reset, timer, antenna on
- *   request  - "is a card there?" (WUPA, the card answers ATQA)
+ *   request  - "is a card there?" (REQA, then WUPA; the card answers ATQA)
  *   anticoll - read the 4-byte UID and check its BCC (XOR checksum)
  */
 #include <stdio.h>
@@ -211,7 +211,7 @@ static int mfrc_transceive(reader_t *r, const uint8_t *data, int len,
     reg_write(r, REG_BIT_FRAMING, 0x80 | tx_bits);   /* StartSend */
 
     /* wait until the card answered (RxIRq) or the timer runs out
-     * (TimerIRq = no card answered); at most about 50 ms. vTaskDelay
+     * (TimerIRq = no card answered); at most about 60 ms. vTaskDelay
      * lets the other tasks run while we wait. */
     uint8_t irq = 0;
     bool done = false;

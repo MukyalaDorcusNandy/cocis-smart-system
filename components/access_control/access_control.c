@@ -15,14 +15,14 @@
  *      every decision is also written to the system log (schedule_log)
  *   5. Runs the serial console; other components add commands to it
  *
- * RFID IS SIMULATED: Wokwi has no ready-made RFID reader, so a scan is
- * typed in the serial monitor:   in A1B2C3D4    or    out A1B2C3D4
- * A real build would add an MFRC522 reader task that pushes the same
- * scan_event_t into scan_queue; access_task would not change.
+ * SCANS come from the two MFRC522 readers (rfid task), from the console
+ * ("in 01020304" / "out 01020304") or from the web dashboard's test scan.
+ * All of them call entrance_submit_scan(), so access_task treats them the same.
  *
  * TASK / DATA FLOW
  *
- *   console_task --(scan_event_t)--> scan_queue --> access_task
+ *   rfid_task / console_task / httpd
+ *        --(scan_event_t)--> scan_queue --> access_task
  *                                                      |  (decides, uses state_mutex)
  *                                                      +--(actuator_cmd_t)--> actuator_queue
  *                                                                                  |
@@ -464,7 +464,8 @@ static void process_scan(const scan_event_t *ev)
     schedule_log("ACCESS,%s,%s,%s,%s,%s", ev->uid, name, point_txt,
                  granted ? "GRANTED" : "DENIED", reason);
 
-    /* Tell the hub (cocis_system) about this decision. Called outside the lock. */
+    /* Tell the listeners (hub, web dashboard, LCD) about this decision.
+     * Called outside the lock. */
     if (event_cb_count > 0) {
         entrance_event_t pub;
         pub.is_entry = (ev->point == POINT_ENTRY);
@@ -530,7 +531,7 @@ static void actuator_task(void *arg)
 }
 
 /* ------------------------------------------------------------------ */
-/* 8. SERIAL COMMANDS (simulated RFID reader + test/management commands) */
+/* 8. SERIAL COMMANDS (typed scans + test/management commands)          */
 /* ------------------------------------------------------------------ */
 static void print_help(void)
 {
@@ -652,9 +653,7 @@ static bool echo_masked(const char *line, int len)
     return false;
 }
 
-/* The only task that reads the serial port: builds a line, runs it.
- * In a real build, an MFRC522 reader task would fill a scan_event_t
- * and call xQueueSend(scan_queue, ...) instead of the in/out commands. */
+/* The only task that reads the serial port: builds a line, runs it. */
 static void console_task(void *arg)
 {
     char line[64];

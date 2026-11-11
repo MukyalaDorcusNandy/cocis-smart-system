@@ -2,23 +2,13 @@
 
 Group coursework (BSE III, Embedded Systems): a smart control and monitoring system for the College of Computing and Information Sciences, simulated in Wokwi with ESP-IDF.
 
-**This file explains how to build, run and use the system.** How the code is organised (folders, components, tasks, synchronisation, pin plan) is in [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md). The tests are in [docs/TEST_PLAN.md](docs/TEST_PLAN.md). The group report is in [docs/REPORT.md](docs/REPORT.md). Help for the video recordings is in [docs/VIDEO_GUIDE.md](docs/VIDEO_GUIDE.md).
+**This file explains how to build, run and use the system.** How the code is organised (folders, components, tasks, synchronisation, pin plan) is in [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md).
 
 Following the lecturer's ruling (free Wokwi supports one microcontroller), the whole system runs on **one ESP32**: the building entrance and lecture rooms 1 and 2 all run in the same firmware.
 
-## Team instructions (recording your video)
+## Quick start
 
-Follow these steps in order.
-
-**1. Get the code.** In a terminal, in the repository folder:
-
-```sh
-git fetch
-git checkout feature/rfid-dashboard
-git pull
-```
-
-**2. Build.** `idf.py` only works in a terminal where ESP-IDF is loaded. If you see `idf.py: command not found`, load it first:
+**1. Build.** `idf.py` only works in a terminal where ESP-IDF is loaded. If you see `idf.py: command not found`, load it first:
 
 - **VS Code:** F1 → **ESP-IDF: Open ESP-IDF Terminal**.
 - **Linux / macOS terminal:** `. ~/.espressif/tools/activate_idf_v6.0.1.sh` (or `. <your esp-idf folder>/export.sh`).
@@ -36,9 +26,9 @@ idf.py build
 
 It must finish with no errors.
 
-**3. Run.** In VS Code press F1 → **Wokwi: Start Simulator**. Turn the computer sound on (buzzer and dashboard beeps).
+**2. Run.** In VS Code press F1 → **Wokwi: Start Simulator**. Turn the computer sound on (buzzer and dashboard beeps).
 
-**4. Tap a card.** Click a reader (ENTRY or EXIT) in the simulator, pick a card (Blue, Green, Yellow, Red, NFC Tag or Key Fob) and press **Tap**. The card stays on the reader for about 0.5 s. With the keyboard: click the reader's card panel, press `b` / `g` / `y` / `r` / `n` / `k` to pick a card, and `t` to tap. **Hold** keeps the card on the reader (it is still read only once).
+**3. Tap a card.** Click a reader (ENTRY or EXIT) in the simulator, pick a card (Blue, Green, Yellow, Red, NFC Tag or Key Fob) and press **Tap**. The card stays on the reader for about 0.5 s. With the keyboard: click the reader's card panel, press `b` / `g` / `y` / `r` / `n` / `k` to pick a card, and `t` to tap. **Hold** keeps the card on the reader (it is still read only once).
 
 | Card in Wokwi | Person | Role / colour | Expected result (first tap on ENTRY) |
 |---|---|---|---|
@@ -51,23 +41,9 @@ It must finish with no errors.
 
 Tapping the same card on ENTRY again gives DENIED `Already inside`. Tap it on EXIT to leave (`BYE ...`). Granted: green LED, door servo, one short beep. Denied: red LED, two long beeps.
 
-**5. Dashboard.** While the simulator runs, open **http://localhost:8180** in your browser and sign in with PIN **1234**.
+**4. Dashboard.** While the simulator runs, open **http://localhost:8180** in your browser and sign in with PIN **1234**.
 
-**6. Backup: typed scans.** Click inside the Wokwi terminal and type `in <UID>` or `out <UID>`, for example `in 01020304` (Brian). `help` lists all commands.
-
-**Full demo, step by step:** [docs/DEMO.md](docs/DEMO.md) (what to click, what you should see, what to say, quick fixes).
-
-**7. Who presents what.** Your script is in [docs/VIDEO_GUIDE.md](docs/VIDEO_GUIDE.md) under your name.
-
-| Member | New part to present | Files to show |
-|---|---|---|
-| Mukyala Dorcus Nandy | The two MFRC522 RFID readers (driver), card roles and colours, buzzer pattern | `components/rfid/rfid.c`, `components/access_control/access_control.c` |
-| Mariam Wambui | Lecture rooms and the room cards on the dashboard | `components/room_control/room_control.c`, `cocis_system/main/main.c` (`web_room()`), `dashboard.html` |
-| Kisomose Arnold Patrick | Entrance LCD, the circuit layout and the pin plan | `components/lcd_display/lcd_display.c`, `cocis_system/diagram.json`, `wokwi.toml`, `sdkconfig.defaults` |
-| Katumba Joshua Mugwanya | Login and web sign-in security | `components/auth/auth.c`, `components/web_dashboard/web_dashboard.c` |
-| Nannyombi Shakiran (Kiran) | Wi-Fi, web dashboard and integration | `cocis_system/main/main.c`, `hub.c`, `components/web_dashboard/` |
-
-**8. Send your video link to Kiran by 23:30.** The report needs it.
+**5. Backup: typed scans.** Click inside the Wokwi terminal and type `in <UID>` or `out <UID>`, for example `in 01020304` (Brian). `help` lists all commands.
 
 **Troubleshooting**
 

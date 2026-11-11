@@ -42,21 +42,16 @@ cocis-smart-system/
 │   └── management/              Admin console commands
 │       (each: CMakeLists.txt, <name>.c, include/<name>.h)
 │
-├── cocis_system/                The firmware project: integration and synchronisation
-│   ├── CMakeLists.txt           Adds ../components
-│   ├── sdkconfig.defaults       Large app partition, 4 MB flash, event task stack, HTTP header size
-│   ├── wokwi.toml               Firmware path, port forward 8180 -> 80
-│   ├── diagram.json             One ESP32: 2 MFRC522 readers, LCD, doors, LEDs, buzzer, PIR + LED per room, SD card
-│   └── main/
-│       ├── CMakeLists.txt
-│       ├── main.c               app_main: starts everything in order; room adapter for the web
-│       ├── hub.c                Hub queue + task, offline detection, rooms/roomfail commands
-│       └── hub.h                hub_start(), hub_get_room(), hub_room_t
-│
-└── docs/
-    ├── TEST_PLAN.md             Tests with steps and expected serial output
-    ├── REPORT.md                Group report (architecture, contributions, tests)
-    └── VIDEO_GUIDE.md           Video scripts for each member
+└── cocis_system/                The firmware project: integration and synchronisation
+    ├── CMakeLists.txt           Adds ../components
+    ├── sdkconfig.defaults       Large app partition, 4 MB flash, event task stack, HTTP header size
+    ├── wokwi.toml               Firmware path, port forward 8180 -> 80
+    ├── diagram.json             One ESP32: 2 MFRC522 readers, LCD, doors, LEDs, buzzer, PIR + LED per room, SD card
+    └── main/
+        ├── CMakeLists.txt
+        ├── main.c               app_main: starts everything in order; room adapter for the web
+        ├── hub.c                Hub queue + task, offline detection, rooms/roomfail commands
+        └── hub.h                hub_start(), hub_get_room(), hub_room_t
 ```
 
 Generated `build/`, `sdkconfig` and `sdkconfig.old` files are not committed.
@@ -102,7 +97,7 @@ room2 task --status (change / 5 s)----------------------------------------------
 | Wi-Fi driver and event tasks | ESP-IDF | ESP-IDF default | event task 6144 (`sdkconfig.defaults`) |
 
 - All scans (reader, typed, web test scan) go through `entrance_submit_scan()`, which puts a `scan_event_t` on `scan_queue` without waiting. So the decision code is the same for all three.
-- The rfid task reports a card **once** when it appears. It reports the same card again only after the reader saw no card for 2 polls (debounce).
+- The rfid task reports a card **once** when it appears. It reports the same card again only after the reader saw no card for 3 polls in a row (debounce).
 - The console task is the only reader of the serial port.
 - The actuator task holds a door open for 3 s, so the access task can decide the next scan meanwhile.
 - The hub waits on its queue with a 1 s timeout and, after each wake-up, marks a room OFFLINE if it has not reported for 15 s (3 missed heartbeats).

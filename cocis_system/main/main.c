@@ -35,7 +35,7 @@ void app_main(void)
     ESP_ERROR_CHECK(auth_init());
     schedule_log("SYSTEM,boot");
 
-    /* 2. hub: queue, task, room/entrance callbacks, "rooms" command */
+    /* 2. hub: queue, task, room/entrance callbacks, "rooms"/"roomfail" commands */
     ESP_ERROR_CHECK(hub_start());
 
     /* 3. admin commands on the console (login, hours, clock, syslog, ...) */
