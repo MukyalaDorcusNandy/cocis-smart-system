@@ -8,39 +8,27 @@ There is one firmware (`cocis_system`) for one ESP32. Each of the three terminal
 
 ```text
 cocis-smart-system/
-├── components/
-│   ├── access_control/          Entrance: card decisions, roles/colours, doors, console
-│   │   ├── CMakeLists.txt
-│   │   ├── access_control.c     Card check, doors, LEDs, buzzer, inside list, console task
-│   │   └── include/
-│   │       └── access_control.h
-│   │
-│   ├── rfid/                    Two MFRC522 readers (ENTRY, EXIT), software SPI
-│   │   ├── rfid.c               MFRC522 driver (WUPA, anticollision, BCC) + rfid task
-│   │   └── include/rfid.h       rfid_start()
-│   │
-│   ├── lcd_display/             16x2 I2C LCD at the entrance (address 0x27)
-│   │   ├── lcd_display.c        PCF8574 + 4-bit LCD driver, lcd task and queue
-│   │   └── include/lcd_display.h lcd_display_start()
-│   │
+├── README.md                    What the system does; build, run, commands, web API, test cards
+├── PROJECT_STRUCTURE.md         This file
+├── .gitignore                   Build output, sdkconfig, editor files, docs/
+│
+├── components/                  Every component has CMakeLists.txt, <name>.c and include/<name>.h
+│   ├── access_control/          Entrance: card check, roles/colours, doors, LEDs, buzzer, inside list, console task
+│   ├── rfid/                    Two MFRC522 readers (ENTRY, EXIT): software SPI, driver (REQA/WUPA,
+│   │                            anticollision, BCC check), rfid task, "rfid" command
+│   ├── lcd_display/             16x2 I2C LCD at the entrance (PCF8574 at 0x27, 4-bit mode), lcd task and queue
 │   ├── web_dashboard/           Wi-Fi + web Security Dashboard
 │   │   ├── wifi.c               Joins "Wokwi-GUEST", retries forever
-│   │   ├── web_dashboard.c      HTTP server, JSON API, PIN sign-in, tokens, alert ring, "wifi" command
-│   │   ├── dashboard.html       The page (embedded in the firmware at build time)
-│   │   └── include/web_dashboard.h
-│   │
-│   ├── room_control/            Lecture rooms 1 and 2
-│   │   ├── CMakeLists.txt
-│   │   ├── room_control.c       One task per room: PIR -> occupancy -> light
+│   │   ├── web_dashboard.c      HTTP server, JSON API, PIN sign-in, token, alert ring, "wifi" command
+│   │   └── dashboard.html       The page (embedded in the firmware at build time)
+│   ├── room_control/            Lecture rooms 1 and 2: one task per room, PIR -> occupancy -> light
 │   │   └── include/
-│   │       ├── room_control.h   room_status_t, start/get functions
+│   │       ├── room_control.h   room_status_t, start/get functions, fault test aid
 │   │       └── room_config.h    Room pins and timings
-│   │
-│   ├── storage/                 SD card log (RAM fallback) + flash key/value
+│   ├── storage/                 SD card log (RAM fallback) + flash key/value (NVS)
 │   ├── schedule/                Opening hours + simulated clock + timestamped log
 │   ├── auth/                    Admin PIN (salted hash, lockout shared by console and web, idle timeout)
 │   └── management/              Admin console commands
-│       (each: CMakeLists.txt, <name>.c, include/<name>.h)
 │
 └── cocis_system/                The firmware project: integration and synchronisation
     ├── CMakeLists.txt           Adds ../components
@@ -54,22 +42,22 @@ cocis-smart-system/
         └── hub.h                hub_start(), hub_get_room(), hub_room_t
 ```
 
-Generated `build/`, `sdkconfig` and `sdkconfig.old` files are not committed.
+Generated `build/`, `sdkconfig` and `sdkconfig.old` files are not committed. The project report, test plan and other coursework documents are kept outside the repository (`docs/` is ignored).
 
 ## What each component does
 
 | Component | Purpose | Main functions |
 |---|---|---|
 | `access_control` | Entrance: ENTRY and EXIT scan points, grant/deny, door servos, LEDs, buzzer, who is inside (role, since-time). Owns the serial console; other components add commands to it. | `entrance_start()`, `entrance_submit_scan()`, `entrance_register_command()`, `entrance_set_event_cb()` (up to 4 listeners), `entrance_get_users()`, `entrance_inside_count()`, `entrance_set_emergency()`, `entrance_get_emergency()`, `entrance_set_blocked()`, `entrance_role_name()`, `entrance_role_color()` |
-| `rfid` | Two MFRC522 readers (Wokwi `board-mfrc522`) driven by software SPI (shared SCK/MOSI, own CS and own MISO per reader). The `rfid` task polls both about every 50 ms and sends each new card to the entrance; the `rfid` command shows reader status | `rfid_register_commands()`, `rfid_start()` |
+| `rfid` | Two MFRC522 readers (Wokwi `board-mfrc522`) driven by software SPI (shared SCK/MOSI, own CS and own MISO per reader). The `rfid` task polls both about every 50 ms and sends each new card to the entrance once (debounced); the `rfid` command shows reader status. A reader that is not found is skipped and typed scans still work | `rfid_register_commands()`, `rfid_start()` |
 | `lcd_display` | 16x2 I2C LCD at the entrance. An entrance event listener copies each decision into a queue; the `lcd` task shows it for 3 s, otherwise the clock, people inside and OPEN/CLOSED. Runs without the LCD if none answers | `lcd_display_start()` |
-| `web_dashboard` | Wi-Fi station, HTTP server on port 80, PIN sign-in with a token, JSON API, alert ring, `wifi` command | `web_dashboard_set_room_provider()`, `web_dashboard_register_commands()`, `web_dashboard_start()`, `wifi_net_start()` |
+| `web_dashboard` | Wi-Fi station, HTTP server on port 80, PIN sign-in with one session token (10 min idle timeout), JSON API (listed in README), ring of the last 30 alerts, `wifi` command | `web_dashboard_set_room_provider()`, `web_dashboard_register_commands()`, `web_dashboard_start()`, `wifi_net_start()` |
 | `room_control` | One task per room: polls the PIR every 100 ms, light follows occupancy with a 10 s vacancy delay, counts light-on seconds, reports on change and every 5 s | `room_control_start(1/2)`, `room_control_set_publish_cb()`, `room_control_get()`, `room_control_simulate_fault()` (test aid) |
 | `storage` | Log lines to `/sdcard/ACCESS.LOG` (SPI2) plus a RAM ring of 20 lines (RAM only if the card fails); small settings in NVS | `storage_init()`, `storage_log()`, `storage_log_print()`, `storage_log_dump_sd()`, `storage_sd_mounted()`, `storage_kv_set/get()` |
 | `schedule` | The only clock and opening hours (saved in NVS, opening before closing), timestamped logging used by every component | `schedule_init()`, `schedule_set/get()`, `schedule_is_open()`, `clock_set()`, `clock_minutes()`, `clock_str()`, `schedule_log()` |
 | `auth` | One ADMIN role. PIN stored as a random 16-byte salt + SHA-256 hash, compared in constant time; lockout, idle timeout, default-PIN flag. Console and web share one failure counter | `auth_init()`, `auth_login()` (console), `auth_check_pin()` (web), `auth_logout()`, `auth_is_logged_in()`, `auth_set_pin()`, `auth_lockout_remaining_s()`, `auth_must_change_pin()` |
 | `management` | Registers the admin commands with the entrance console; every setting change checks `auth_is_logged_in()` first | `management_register_commands()` |
-| `cocis_system` | Start-up order, hub task, room table, building occupancy, offline detection, `rooms` and `roomfail` commands, room adapter `web_room()` for the dashboard | `app_main()`, `hub_start()`, `hub_get_room()` |
+| `cocis_system` | Start-up order, hub task, room table (online/offline, latest report), offline detection, `rooms` and `roomfail` commands, room adapter `web_room()` for the dashboard | `app_main()`, `hub_start()`, `hub_get_room()` |
 
 ## Tasks and queues
 
@@ -141,9 +129,8 @@ Room and entrance callbacks only call `xQueueSend(..., 0)` or copy into the aler
 | Room 2 PIR / LED | 33 / 22 | `room_config.h` |
 | SD card SCK / MOSI / MISO / CS (SPI2) | 14 / 13 / 34 / 4 | `storage.c` |
 | RFID readers SCK / MOSI (software SPI, shared) | 16 / 17 | `rfid.c` |
-| RFID ENTRY reader CS / MISO | 5 / 35 | `rfid.c` |
-| RFID EXIT reader CS / MISO | 23 / 36 (VP) | `rfid.c` |
-| RFID chip select: ENTRY / EXIT (SDA pin) | 5 / 23 | `rfid.c` |
+| RFID ENTRY reader CS (SDA pin) / MISO | 5 / 35 | `rfid.c` |
+| RFID EXIT reader CS (SDA pin) / MISO | 23 / 36 (VP) | `rfid.c` |
 | RFID RST (both readers) | wired to 3.3 V (always running) | `diagram.json` |
 | Entrance servos (entry / exit), LEDC 50 Hz | 18 / 19 | `access_control.c` |
 | Entrance LEDs (grant / deny) and buzzer (LEDC 2 kHz) | 25 / 26 / 27 | `access_control.c` |
